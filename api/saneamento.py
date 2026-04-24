@@ -323,3 +323,43 @@ def health() -> dict:
         "ia_configured": bool(settings.openrouter_api_key),
         "ia_model": settings.ia_model if settings.ia_enabled else None,
     }
+
+
+@router.get("/test-ia", summary="Testa se a IA está funcionando")
+async def test_ia():
+    """Testa a configuração da IA e faz uma chamada simples."""
+    from config import settings
+    from ai.analyzer import analisar
+    
+    resultado = {
+        "ia_enabled": settings.ia_enabled,
+        "ia_model": settings.ia_model,
+        "openrouter_api_key_present": bool(settings.openrouter_api_key),
+        "test_result": None,
+        "test_error": None,
+    }
+    
+    if not settings.ia_enabled:
+        resultado["test_error"] = "IA não está habilitada (ia_enabled=false)"
+        return resultado
+    
+    if not settings.openrouter_api_key:
+        resultado["test_error"] = "API key do OpenRouter não configurada"
+        return resultado
+    
+    try:
+        # Teste simples: pergunta à IA para responder com JSON
+        resposta = await analisar(
+            "Responda APENAS com JSON: {\"status\": \"ok\", \"mensagem\": \"IA funcionando\"}",
+            "Teste de conexão",
+            max_tokens=100
+        )
+        resultado["test_result"] = resposta
+        if resposta:
+            resultado["status"] = "sucesso"
+        else:
+            resultado["test_error"] = "IA retornou None (possível erro na chamada)"
+    except Exception as exc:
+        resultado["test_error"] = f"Erro ao chamar IA: {str(exc)}"
+    
+    return resultado
