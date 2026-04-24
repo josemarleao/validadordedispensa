@@ -39,12 +39,11 @@ _SISTEMA = (
 def _get_openrouter_model() -> str:
     """Retorna o modelo OpenRouter a ser usado."""
     from config import settings
-    # Usa o modelo configurado no secret, não o padrão "openrouter/free"
-    # que tem rate limit muito restrito (16 req/min)
+    # Usa apenas o modelo configurado no secret
     if settings.ia_model:
         return settings.ia_model
-    # Fallback para modelo com limite maior
-    return "meta-llama/llama-3.3-70b-instruct:free"
+    # Se não configurado, retorna None para indicar erro
+    return None
 
 
 async def analisar(
@@ -98,6 +97,11 @@ async def _analisar_openrouter(
     # Retry com backoff exponencial
     timeouts = [90.0, 150.0]
     model = _get_openrouter_model()
+    
+    if not model:
+        log.error("Modelo IA não configurado (ia_model está vazio)")
+        return {"error": "model_not_configured", "error_message": "IA_MODEL não está configurado"}
+    
     log.info("Usando modelo OpenRouter: %s", model)
     
     for attempt in range(len(timeouts)):
