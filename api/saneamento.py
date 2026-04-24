@@ -314,12 +314,19 @@ async def sanear_processo_stream(
 
 @router.get("/health", summary="Verificação de disponibilidade")
 def health() -> dict:
+    # Verifica a API key correta dependendo do provider
+    api_key_configurada = False
+    if settings.ia_provider.lower() == "openrouter":
+        api_key_configurada = bool(settings.openrouter_api_key)
+    else:  # gemini
+        api_key_configurada = bool(settings.gemini_api_key)
+    
     return {
         "status": "ok",
         "servico": "Saneamento DL – MPBA",
         "azure_storage": settings.azure_storage_enabled,
         "ocr_enabled": settings.ocr_enabled,
         "ia_enabled": settings.ia_enabled,
-        "ia_configured": bool(settings.gemini_api_key),
+        "ia_configured": api_key_configurada,
         "ia_model": settings.ia_model if settings.ia_enabled else None,
     }
