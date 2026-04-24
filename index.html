@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validador de Dispensa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         hsl(0 0% 100%);
+    --fg:         hsl(0 0% 22%);
+    --border:     hsl(0 0% 82%);
+    --input:      hsl(0 0% 82%);
+    --ring:       hsl(0 0% 45%);
+    --muted-fg:   hsl(0 0% 45%);
+    --primary:    hsl(0 0% 28%);
+    --secondary:  hsl(0 0% 95%);
+    --radius:     0.5rem;
+  }
+
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar { display: none; }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    font-feature-settings: "cv11","ss01";
+    -webkit-font-smoothing: antialiased;
+    color: var(--fg);
+    min-height: 100vh;
+    background: linear-gradient(145deg,
+      hsl(0 0% 91%) 0%,
+      hsl(0 0% 96%) 35%,
+      hsl(0 0% 88%) 65%,
+      hsl(0 0% 94%) 100%);
+    background-attachment: fixed;
+    padding-top: 80px;
+    padding-bottom: 2rem;
+  }
+
+  /* HEADER FIXO FLUTUANTE */
+  .header {
+    position: fixed;
+    z-index: 50;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 3rem);
+    max-width: calc(1024px - 3rem);
+    height: 52px;
+    border-radius: 14px;
+    border: 1px solid rgba(0,0,0,0.07);
+    background: rgba(255,255,255,0.78);
+    backdrop-filter: blur(24px) saturate(1.2);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+  }
+  .header-logo {
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--fg);
+  }
+  .header-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: hsl(0 0% 55%);
+    white-space: nowrap;
+  }
+  .header-right {
+    margin-left: auto;
+    font-size: 0.75rem;
+    color: hsl(0 0% 60%);
+  }
+
+  /* LAYOUT */
+  .container {
+    max-width: 1024px;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  /* GLASS CLASSES */
+  .glass {
+    background: rgba(255,255,255,0.68);
+    backdrop-filter: blur(18px) saturate(1.15);
+    border: 1px solid hsl(0 0% 82%);
+    border-radius: var(--radius);
+    box-shadow: none;
+  }
+  .glass-input {
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius);
+  }
+
+  /* CARD */
+  .card {
+    padding: 16px;
+  }
+  @media (min-width: 640px) {
+    .card { padding: 24px; }
+  }
+  .page-title {
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: var(--fg);
+    margin-bottom: 0.25rem;
+  }
+  .page-subtitle {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted-fg);
+    margin-bottom: 1.5rem;
+  }
+
+  /* FORMULÁRIO */
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .form-group { display: flex; flex-direction: column; }
+  .form-group.full { grid-column: 1 / -1; }
+
+  label {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--muted-fg);
+    margin-bottom: 4px;
+  }
+
+  input[type=text] {
+    height: 36px;
+    padding: 0 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: var(--fg);
+    outline: none;
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(8px);
+    width: 100%;
+  }
+  input[type=text]::placeholder { color: var(--muted-fg); }
+  input[type=text]:focus { border-color: var(--fg); }
+
+  input[type=file] {
+    width: 100%;
+    font-size: 0.875rem;
+    font-family: inherit;
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0 0.75rem;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    outline: none;
+    background: rgba(255,255,255,0.55);
+    backdrop-filter: blur(8px);
+  }
+  input[type=file]::file-selector-button {
+    height: 36px;
+    margin-right: 0.75rem;
+    margin-left: -0.75rem;
+    border: none;
+    border-right: 1px solid var(--border);
+    background: var(--secondary);
+    color: var(--fg);
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    padding: 0 0.75rem;
+  }
+
+  /* BOTÃO */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    padding: 0 1.25rem;
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    width: 100%;
+    margin-top: 1rem;
+    background: var(--primary);
+    color: hsl(0 0% 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .btn::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+  }
+  .btn:hover::after { background: rgba(0,0,0,0.04); }
+  .btn:disabled { background: hsl(0 0% 65%); cursor: not-allowed; }
+
+  /* PROGRESSO */
+  #progresso { display: none; margin-top: 1.5rem; }
+
+  .barra-wrap {
+    background: hsl(0 0% 88%);
+    border-radius: 99px;
+    height: 4px;
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+  }
+  .barra {
+    height: 100%;
+    background: var(--primary);
+    border-radius: 99px;
+    transition: width 0.5s ease;
+    width: 0%;
+  }
+
+  .etapas { list-style: none; }
+  .etapas li {
+    padding: 0.45rem 0.75rem;
+    border-left: 2px solid hsl(0 0% 82%);
+    margin-bottom: 0.35rem;
+    font-size: 0.8125rem;
+    color: hsl(0 0% 55%);
+    border-radius: 0 var(--radius) var(--radius) 0;
+  }
+  .etapas li.ativa {
+    border-color: var(--fg);
+    color: var(--fg);
+    background: rgba(0,0,0,0.03);
+    font-weight: 600;
+  }
+  .etapas li.ok {
+    border-color: hsl(0 0% 70%);
+    color: hsl(0 0% 40%);
+    background: rgba(0,0,0,0.015);
+  }
+  .etapas li.erro {
+    border-color: hsl(0 0% 40%);
+    color: hsl(0 0% 28%);
+    background: rgba(0,0,0,0.04);
+    font-weight: 600;
+  }
+
+  /* ERRO */
+  #erro-msg {
+    display: none;
+    border: 1px solid hsl(0 0% 78%);
+    border-radius: var(--radius);
+    padding: 0.75rem 1rem;
+    margin-top: 1rem;
+    font-size: 0.8125rem;
+    background: rgba(0,0,0,0.03);
+    color: hsl(0 0% 30%);
+  }
+
+  /* RESULTADO */
+  #resultado { display: none; margin-top: 1.5rem; }
+
+  .resumo {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+  }
+  .badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid hsl(0 0% 82%);
+    background: var(--secondary);
+    color: var(--fg);
+  }
+  .badge-ok   { background: hsl(120 70% 85%); color: hsl(120 80% 20%); }
+  .badge-inc  { background: hsl(0 70% 85%); color: hsl(0 80% 20%); }
+  .badge-pend { background: hsl(45 70% 85%); color: hsl(45 80% 25%); }
+  .badge-ocr  { background: hsl(0 0% 95%); color: hsl(0 0% 35%); }
+
+  /* TABELA */
+  .table-wrap { overflow-x: auto; border-radius: var(--radius); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 0.875rem;
+  }
+  th {
+    background: hsl(0 0% 93%);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 8px 12px;
+    border: 1px solid hsl(0 0% 82%);
+    text-align: center;
+    color: var(--fg);
+  }
+  td {
+    font-size: 0.875rem;
+    padding: 8px 12px;
+    border: 1px solid hsl(0 0% 88%);
+    vertical-align: top;
+    overflow-wrap: break-word;
+    color: var(--fg);
+    line-height: 1.45;
+    text-align: center;
+  }
+  /* Descrição: texto longo alinhado à esquerda */
+  td:last-child { text-align: left; }
+  tr:nth-child(odd) td { background: hsl(0 0% 98%); }
+  tr:hover td { background: hsl(0 0% 95%); }
+
+  /* Seção de resultado */
+  .section-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--fg);
+    margin-bottom: 12px;
+  }
+
+  .status-ok   { font-weight: 600; color: hsl(0 0% 22%); font-size: 0.75rem; white-space: nowrap; }
+  .status-inc  { font-weight: 600; color: hsl(0 0% 18%); font-size: 0.75rem; white-space: nowrap; }
+  .status-pend { font-weight: 600; color: hsl(0 0% 30%); font-size: 0.75rem; white-space: nowrap; }
+
+  .ia-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: hsl(0 0% 88%);
+    color: hsl(0 0% 30%);
+    border-radius: 3px;
+    padding: 1px 5px;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+
+  .num { font-variant-numeric: tabular-nums; }
+
+  @media (max-width: 600px) {
+    .form-grid { grid-template-columns: 1fr; }
+    .header-title { display: none; }
+    .container { padding: 0 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER FLUTUANTE -->
+<header class="header">
+  <span class="header-logo">MPBA</span>
+  <span class="header-title">Validador de Dispensa</span>
+  <span class="header-right">DCCL</span>
+</header>
+
+<!-- CONTEÚDO -->
+<div class="container">
+  <div class="glass card">
+    <h1 class="page-title">Saneamento de Processo</h1>
+    <p class="page-subtitle">MPBA · DISPENSA DE LICITAÇÃO · VERIFICAÇÃO AUTOMATIZADA</p>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label for="sei">NÚMERO SEI DO PROCESSO *</label>
+        <input type="text" id="sei" placeholder="Ex: 8030.1234/2024-00">
+      </div>
+      <div class="form-group">
+        <label for="unidade">UNIDADE DEMANDANTE</label>
+        <input type="text" id="unidade" placeholder="Ex: DADM">
+      </div>
+      <div class="form-group full">
+        <label for="pdf">ARQUIVO PDF DO PROCESSO *</label>
+        <input type="file" id="pdf" accept=".pdf">
+      </div>
+    </div>
+
+    <button class="btn" id="btnAnalisar" onclick="analisar()">Analisar Processo</button>
+
+    <div id="progresso">
+      <div class="barra-wrap"><div class="barra" id="barra"></div></div>
+      <ul class="etapas" id="etapas"></ul>
+    </div>
+
+    <div id="erro-msg"></div>
+    <div id="resultado"></div>
+  </div>
+</div>
+
+<script>
+const ETAPAS_ORDEM = ['extracao','classificacao','classificacao_ia','extracao_dados','saneamento'];
+let etapasEl = {};
+
+function setEtapa(etapa, msg, classe) {
+  if (!etapasEl[etapa]) {
+    const li = document.createElement('li');
+    li.id = 'etapa-' + etapa;
+    li.textContent = msg;
+    document.getElementById('etapas').appendChild(li);
+    etapasEl[etapa] = li;
+  } else {
+    etapasEl[etapa].textContent = msg;
+  }
+  let passou = false;
+  for (const e of ETAPAS_ORDEM) {
+    if (e === etapa) {
+      passou = true;
+      if (etapasEl[etapa]) etapasEl[etapa].className = classe || 'ativa';
+      continue;
+    }
+    if (!passou && etapasEl[e]) etapasEl[e].className = 'ok';
+  }
+  const idx = ETAPAS_ORDEM.indexOf(etapa);
+  document.getElementById('barra').style.width = ((idx + 1) / ETAPAS_ORDEM.length * 90) + '%';
+}
+
+function renderResultado(dados) {
+  document.getElementById('barra').style.width = '100%';
+  for (const li of Object.values(etapasEl)) li.className = 'ok';
+
+  // Usar contadores_display do backend para valores corretos
+  const contadores = dados.relatorio?.contadores_display || {};
+  const nOk = contadores.nOk || 0;
+  const nInc = contadores.nInc || 0;
+  const nPend = contadores.nPend || 0;
+  
+  // Calcular porcentagem de conformidade
+  const total = nOk + nInc + nPend;
+  const percentualConforme = total > 0 ? Math.round((nOk / total) * 100) : 0;
+
+  // Filtrar apenas itens para exibir na tabela (inconformidades e pendências)
+  const itens = dados.relatorio?.resultados || [];
+  const itensTabela = itens.filter(i => i.status !== 'OK');
+
+  const div = document.getElementById('resultado');
+  div.style.display = 'block';
+  div.innerHTML = `
+    <div style="margin-top:24px">
+      <p class="section-title">Resultado da Verificação</p>
+      <div class="resumo">
+        <span class="badge badge-ok num">${percentualConforme}% Conforme</span>
+        <span class="badge badge-inc num">${nInc} Inconforme</span>
+        <span class="badge badge-pend num">${nPend} Pendência</span>
+        ${dados.ocr_utilizado ? '<span class="badge badge-ocr">OCR Utilizado</span>' : ''}
+      </div>
+      <div class="table-wrap">
+        <table>
+            <thead>
+              <tr>
+                  <th style="width:22%">Documento</th>
+                  <th style="width:20%">Item</th>
+                  <th style="width:12%">Status</th>
+                  <th style="width:46%">Descrição</th>
+                </tr>
+            </thead>
+            <tbody>
+              ${itensTabela.map(i => `
+              <tr>
+                <td>${i.documento}</td>
+                <td>${i.item}${i.via_ia ? '<span class="ia-badge">IA</span>' : ''}</td>
+                <td class="status-${i.status === 'OK' ? 'ok' : i.status === 'INCONFORME' ? 'inc' : 'pend'}">${i.status}</td>
+                <td style="text-align:left">${i.descricao || ''}${i.providencia && i.providencia !== 'Nenhuma' ? `<em style="color:hsl(0 0% 50%)"> &#x2192; ${i.providencia}</em>` : ''}</td>
+              </tr>`).join('')}
+            </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+async function analisar() {
+  const sei     = document.getElementById('sei').value.trim();
+  const unidade = document.getElementById('unidade').value.trim();
+  const pdfFile = document.getElementById('pdf').files[0];
+
+  if (!sei || !pdfFile) { alert('Preencha o Número SEI e selecione o PDF.'); return; }
+
+  document.getElementById('btnAnalisar').disabled = true;
+  document.getElementById('progresso').style.display = 'block';
+  document.getElementById('resultado').style.display = 'none';
+  document.getElementById('erro-msg').style.display = 'none';
+  document.getElementById('etapas').innerHTML = '';
+  document.getElementById('barra').style.width = '5%';
+  etapasEl = {};
+
+  const form = new FormData();
+  form.append('file', pdfFile);
+  form.append('processo_sei', sei);
+  form.append('unidade_demandante', unidade);
+
+  try {
+    const resp = await fetch('https://saneamento-pdf.purplemoss-25ff039e.brazilsouth.azurecontainerapps.io/saneamento/processo/stream', { 
+      method: 'POST', 
+      body: form,
+      headers: {
+        'Accept': 'text/event-stream',
+      }
+    });
+    
+    if (!resp.ok) {
+      const errorText = await resp.text();
+      throw new Error(`Erro HTTP ${resp.status}: ${errorText}`);
+    }
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let currentEvent = 'message';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        if (line.startsWith('event: ')) {
+          currentEvent = line.slice(7).trim();
+          console.log('Evento recebido:', currentEvent);
+          continue;
+        }
+        
+        if (line.startsWith('data: ')) {
+          const dataStr = line.slice(6).trim();
+          if (!dataStr) continue;
+          
+          try {
+            const data = JSON.parse(dataStr);
+            console.log('Data recebida:', dataStr);
+            
+            if (currentEvent === 'progresso') {
+              setEtapa(data.etapa, data.mensagem);
+            } else if (currentEvent === 'resultado') {
+              console.log('Renderizando resultado:', data);
+              renderResultado(data);
+            } else if (currentEvent === 'erro') {
+              throw new Error(data.detail || 'Erro desconhecido');
+            }
+          } catch (e) {
+            console.error('Erro ao processar data:', e, dataStr);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erro completo:', err);
+    const el = document.getElementById('erro-msg');
+    el.style.display = 'block';
+    el.textContent = 'Erro: ' + err.message;
+  } finally {
+    document.getElementById('btnAnalisar').disabled = false;
+  }
+}
+</script>
+</body>
+</html>
