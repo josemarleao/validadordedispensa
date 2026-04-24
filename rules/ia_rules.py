@@ -337,8 +337,12 @@ def _aplicar_revisao_double_check(
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _analisar_dfd(processo: ProcessoExtraido) -> list[ResultadoItem]:
+    log.info("_analisar_dfd() chamado - DFD presente: %s, texto_original presente: %s", 
+             bool(processo.dfd), bool(processo.dfd and processo.dfd.texto_original))
+    
     dfd = processo.dfd
     if not dfd or not dfd.texto_original:
+        log.warning("DFD ou texto_original ausente, retornando vazio")
         return []
 
     # Prepara contexto para análise de coerência DFD × TR

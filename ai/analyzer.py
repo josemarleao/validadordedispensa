@@ -51,14 +51,21 @@ async def analisar(
     import asyncio
     from config import settings
 
+    log.info("analisar() chamado - ia_enabled=%s, openrouter_api_key_present=%s", 
+             settings.ia_enabled, bool(settings.openrouter_api_key))
+    
     if not settings.ia_enabled:
+        log.warning("IA desabilitada, retornando None")
         return None
     
     if not settings.openrouter_api_key:
-        log.warning("OpenRouter habilitado mas API key não configurada.")
+        log.warning("OpenRouter habilitado mas API key não configurada, retornando None")
         return None
     
-    return await _analisar_openrouter(pergunta, contexto, max_tokens)
+    log.info("Chamando _analisar_openrouter com contexto de %d chars", len(contexto))
+    resultado = await _analisar_openrouter(pergunta, contexto, max_tokens)
+    log.info("analisar() retornou: %s", "sucesso" if resultado else "None")
+    return resultado
 
 
 async def _analisar_openrouter(
