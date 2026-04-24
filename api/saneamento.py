@@ -313,8 +313,12 @@ async def sanear_processo_stream(
 
 
 @router.get("/health", summary="Verificação de disponibilidade")
-def health() -> dict:
-    return {
+async def health():
+    """Verifica se a IA está configurada e faz um teste simples."""
+    from config import settings
+    from ai.analyzer import analisar
+    
+    resultado = {
         "status": "ok",
         "servico": "Saneamento DL – MPBA",
         "azure_storage": settings.azure_storage_enabled,
@@ -322,7 +326,22 @@ def health() -> dict:
         "ia_enabled": settings.ia_enabled,
         "ia_configured": bool(settings.openrouter_api_key),
         "ia_model": settings.ia_model if settings.ia_enabled else None,
+        "ia_test": None,
     }
+    
+    # Teste rápido da IA se estiver configurada
+    if settings.ia_enabled and settings.openrouter_api_key:
+        try:
+            resposta = await analisar(
+                "Responda APENAS com JSON: {\"status\": \"ok\"}",
+                "Teste rápido",
+                max_tokens=50
+            )
+            resultado["ia_test"] = "sucesso" if resposta else "falhou"
+        except Exception as exc:
+            resultado["ia_test"] = f"erro: {str(exc)}"
+    
+    return resultado
 
 
 @router.get("/test-ia", summary="Testa se a IA está funcionando")
