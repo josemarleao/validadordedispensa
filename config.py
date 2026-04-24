@@ -16,12 +16,11 @@ class Settings(BaseSettings):
     azure_doc_intelligence_endpoint: Optional[str] = None
     azure_doc_intelligence_key: Optional[str] = None
 
-    # IA – Gemini ou OpenRouter para análise de documentos
-    gemini_api_key: Optional[str] = None
-    openrouter_api_key: Optional[str] = None
+    # Kilo AI – IA para análise de documentos
+    kilo_api_key: Optional[str] = None
+    kilo_base_url: str = "https://api.kilo.ai/api/gateway"
     ia_enabled: bool = False
-    ia_provider: str = "gemini"  # "gemini" ou "openrouter"
-    ia_model: str = "gemini-2.0-flash-exp"  # Modelo padrão Gemini
+    ia_model: str = "anthropic/claude-3-haiku"  # Modelo padrão Kilo AI
 
     # Comportamento do serviço
     max_pdf_size_mb: int = 50

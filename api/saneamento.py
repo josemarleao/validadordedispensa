@@ -318,25 +318,20 @@ async def health():
     from config import settings
     from ai.analyzer import analisar
     
-    # Verifica qual provider está configurado
-    provider = settings.ia_provider.lower()
-    api_key_configurada = bool(settings.gemini_api_key) if provider == "gemini" else bool(settings.openrouter_api_key)
-    
     resultado = {
         "status": "ok",
         "servico": "Saneamento DL – MPBA",
         "azure_storage": settings.azure_storage_enabled,
         "ocr_enabled": settings.ocr_enabled,
         "ia_enabled": settings.ia_enabled,
-        "ia_provider": settings.ia_provider,
-        "ia_configured": api_key_configurada,
+        "ia_configured": bool(settings.kilo_api_key),
         "ia_model": settings.ia_model if settings.ia_enabled else None,
         "ia_test": None,
         "ia_test_error": None,
     }
     
     # Teste rápido da IA se estiver configurada
-    if settings.ia_enabled and api_key_configurada:
+    if settings.ia_enabled and settings.kilo_api_key:
         try:
             resposta = await analisar(
                 "Responda APENAS com JSON: {\"status\": \"ok\"}",

@@ -53,11 +53,9 @@ async def reclassificar_desconhecidos_com_ia(
     """
     from config import settings
 
-    # Verifica qual provider está configurado e se a API key correspondente está presente
-    provider = settings.ia_provider.lower()
-    api_key_configurada = bool(settings.gemini_api_key) if provider == "gemini" else bool(settings.openrouter_api_key)
-    
-    if not settings.ia_enabled or not api_key_configurada:
+    # Verifica se API key do Kilo AI está configurada
+    if not settings.kilo_api_key:
+        log.info("API key do Kilo AI não configurada, usando apenas classificação determinística")
         return segmentos
 
     candidatos = [
