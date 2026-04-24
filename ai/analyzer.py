@@ -89,6 +89,7 @@ async def _analisar_openrouter(
         contexto_usado = contexto
     
     last_error: Exception | None = None
+    raw_response: str = ""
     # Retry com backoff exponencial
     timeouts = [90.0, 150.0]
     model = _get_openrouter_model()
@@ -120,6 +121,7 @@ async def _analisar_openrouter(
             
             txt = resp.choices[0].message.content or ""
             txt = txt.strip()
+            raw_response = txt
 
             log.info(
                 "OpenRouter resposta recebida (%d chars): %.400s",
@@ -130,7 +132,8 @@ async def _analisar_openrouter(
                 log.warning("OpenRouter retornou resposta vazia.")
                 if attempt == 0:
                     continue
-                return None
+                # Retornar dict com erro para debug
+                return {"error": "empty_response", "raw_response": raw_response}
             # Remove delimitadores de bloco de código, se presentes
             if "```json" in txt:
                 txt = txt.split("```json")[1].split("```")[0].strip()
@@ -150,22 +153,23 @@ async def _analisar_openrouter(
             if attempt < len(timeouts) - 1:
                 await asyncio.sleep(2 ** attempt)
                 continue
-            return None
+            # Retornar dict com erro para debug
+            return {"error": "json_decode", "error_message": str(exc), "raw_response": raw_response[:500]}
         except asyncio.TimeoutError as exc:
             last_error = exc
             log.warning("Timeout do OpenRouter (tentativa %d/%d, timeout=%.1fs)", attempt + 1, len(timeouts), timeouts[attempt])
             if attempt < len(timeouts) - 1:
                 await asyncio.sleep(2 ** attempt)
                 continue
-            return None
+            return {"error": "timeout", "error_message": str(exc)}
         except Exception as exc:
             last_error = exc
             log.error("Análise por OpenRouter falhou (tentativa %d/%d): %s - Tipo: %s - Detalhes: %s", attempt + 1, len(timeouts), str(exc), type(exc).__name__, str(exc.__dict__) if hasattr(exc, '__dict__') else "")
             if attempt < len(timeouts) - 1:
                 await asyncio.sleep(2 ** attempt)
                 continue
-            return None
+            return {"error": "exception", "error_message": str(exc), "error_type": type(exc).__name__}
 
     if last_error:
         log.error("Análise por OpenRouter esgotou tentativas: %s", last_error)
-    return None
+    return {"error": "exhausted_retries", "last_error": str(last_error) if last_error else "unknown"}
