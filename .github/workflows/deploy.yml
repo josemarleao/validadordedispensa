@@ -69,7 +69,6 @@ jobs:
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --set-env-vars \
               IA_ENABLED="true" \
-              IA_PROVIDER="openrouter" \
               IA_MODEL="${{ secrets.IA_MODEL }}" \
               OPENROUTER_API_KEY="${{ secrets.OPENROUTER_API_KEY }}" \
             --output none

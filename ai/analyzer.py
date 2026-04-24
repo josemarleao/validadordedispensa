@@ -70,7 +70,7 @@ async def _analisar_openrouter(
     import asyncio
     from config import settings
 
-    log.info("Iniciando análise OpenRouter - Provider: %s, Model: %s", settings.ia_provider, settings.ia_model)
+    log.info("Iniciando análise OpenRouter - Model: %s", settings.ia_model)
     
     # Trunca contexto se necessário (OpenRouter free models têm limites)
     safety = 120_000  # limite conservador para modelos free
