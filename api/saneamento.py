@@ -327,6 +327,7 @@ async def health():
         "ia_configured": bool(settings.openrouter_api_key),
         "ia_model": settings.ia_model if settings.ia_enabled else None,
         "ia_test": None,
+        "ia_test_error": None,
     }
     
     # Teste rápido da IA se estiver configurada
@@ -337,9 +338,15 @@ async def health():
                 "Teste rápido",
                 max_tokens=50
             )
-            resultado["ia_test"] = "sucesso" if resposta else "falhou"
+            if resposta:
+                resultado["ia_test"] = "sucesso"
+                resultado["ia_test_result"] = resposta
+            else:
+                resultado["ia_test"] = "falhou - IA retornou None"
         except Exception as exc:
-            resultado["ia_test"] = f"erro: {str(exc)}"
+            resultado["ia_test"] = "erro"
+            resultado["ia_test_error"] = str(exc)
+            resultado["ia_test_error_type"] = type(exc).__name__
     
     return resultado
 

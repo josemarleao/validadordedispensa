@@ -100,6 +100,8 @@ async def _analisar_openrouter(
             timeout = timeouts[attempt]
             
             log.info("Tentativa %d/%d - Enviando requisição para OpenRouter", attempt + 1, len(timeouts))
+            log.info("Pergunta: %.100s", pergunta)
+            log.info("Contexto: %.100s", contexto_usado[:100])
             
             # Usa asyncio para rodar chamada síncrona do OpenAI em thread separada
             loop = asyncio.get_event_loop()
@@ -139,10 +141,12 @@ async def _analisar_openrouter(
             fim = txt.rfind("}") + 1
             if inicio >= 0 and fim > inicio:
                 txt = txt[inicio:fim]
-            return json.loads(txt)
+            result = json.loads(txt)
+            log.info("JSON parseado com sucesso: %s", result)
+            return result
         except json.JSONDecodeError as exc:
             last_error = exc
-            log.warning("JSON do OpenRouter inválido (tentativa %d/%d): %s", attempt + 1, len(timeouts), exc)
+            log.warning("JSON do OpenRouter inválido (tentativa %d/%d): %s - Resposta: %.200s", attempt + 1, len(timeouts), exc, txt[:200] if 'txt' in locals() else "N/A")
             if attempt < len(timeouts) - 1:
                 await asyncio.sleep(2 ** attempt)
                 continue
@@ -156,7 +160,7 @@ async def _analisar_openrouter(
             return None
         except Exception as exc:
             last_error = exc
-            log.error("Análise por OpenRouter falhou (tentativa %d/%d): %s - Tipo: %s", attempt + 1, len(timeouts), str(exc), type(exc).__name__)
+            log.error("Análise por OpenRouter falhou (tentativa %d/%d): %s - Tipo: %s - Detalhes: %s", attempt + 1, len(timeouts), str(exc), type(exc).__name__, str(exc.__dict__) if hasattr(exc, '__dict__') else "")
             if attempt < len(timeouts) - 1:
                 await asyncio.sleep(2 ** attempt)
                 continue
