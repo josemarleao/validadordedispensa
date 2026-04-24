@@ -16,10 +16,12 @@ class Settings(BaseSettings):
     azure_doc_intelligence_endpoint: Optional[str] = None
     azure_doc_intelligence_key: Optional[str] = None
 
-    # OpenRouter – IA para análise de documentos
+    # IA – Gemini ou OpenRouter para análise de documentos
+    gemini_api_key: Optional[str] = None
     openrouter_api_key: Optional[str] = None
     ia_enabled: bool = False
-    ia_model: str = "openrouter/free"  # Modelo padrão OpenRouter free
+    ia_provider: str = "gemini"  # "gemini" ou "openrouter"
+    ia_model: str = "gemini-2.0-flash-exp"  # Modelo padrão Gemini
 
     # Comportamento do serviço
     max_pdf_size_mb: int = 50

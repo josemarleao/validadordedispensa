@@ -1,4 +1,4 @@
-"""Cliente OpenRouter para análise subsidiária de documentos de DL."""
+"""Cliente Google Gemini e OpenRouter para análise subsidiária de documentos de DL."""
 
 from __future__ import annotations
 import asyncio
@@ -10,7 +10,21 @@ from typing import Any, Optional
 log = logging.getLogger(__name__)
 
 _client_lock = threading.Lock()
+_genai_client: Any = None
 _openrouter_client: Any = None
+
+
+def _get_genai_client() -> Any:
+    """Reutiliza um único cliente HTTP (menos overhead e mais estável sob carga)."""
+    global _genai_client
+    from config import settings
+
+    with _client_lock:
+        if _genai_client is None:
+            from google import genai
+
+            _genai_client = genai.Client(api_key=settings.gemini_api_key)
+        return _genai_client
 
 
 def _get_openrouter_client() -> Any:
@@ -36,13 +50,39 @@ _SISTEMA = (
 )
 
 
+def _limite_contexto_chars(ia_model: str) -> int:
+    """Gemma costuma ter janela menor que Gemini; evita rejeição por contexto excedido."""
+    m = (ia_model or "").lower()
+    if m.startswith("gemma"):
+        return 120_000
+    return 400_000
+
+
+def _config_geracao(max_tokens: int, ia_model: str) -> Any:
+    from google.genai import types
+
+    m = (ia_model or "").lower()
+    # Thinking é específico de famílias Gemini 2.5+; Gemma rejeita / ignora de forma inconsistente.
+    if m.startswith("gemma"):
+        return types.GenerateContentConfig(
+            max_output_tokens=max_tokens,
+            temperature=0.1,
+        )
+    return types.GenerateContentConfig(
+        thinking_config=types.ThinkingConfig(thinking_budget=0),
+        max_output_tokens=max_tokens,
+        temperature=0.1,
+    )
+
+
 def _get_openrouter_model() -> str:
     """Retorna o modelo OpenRouter a ser usado."""
     from config import settings
-    # Usa apenas o modelo configurado no secret
-    if settings.ia_model:
-        return settings.ia_model
-    # Se não configurado, retorna None para indicar erro
+    model = settings.ia_model
+    log.info("Lendo modelo das configurações: ia_model='%s'", model)
+    if model:
+        return model
+    log.error("Modelo IA não configurado (ia_model está vazio)")
     return None
 
 
@@ -51,25 +91,132 @@ async def analisar(
     contexto: str,
     max_tokens: int = 512,
 ) -> Optional[dict[str, Any]]:
-    """Envia prompt ao OpenRouter e retorna JSON parseado, ou None se IA desabilitada/falhar."""
+    """Envia prompt ao Gemini ou OpenRouter e retorna JSON parseado, ou None se IA desabilitada/falhar."""
     import asyncio
     from config import settings
 
-    log.info("analisar() chamado - ia_enabled=%s, openrouter_api_key_present=%s", 
-             settings.ia_enabled, bool(settings.openrouter_api_key))
+    log.info("analisar() chamado - ia_enabled=%s, ia_provider=%s, gemini_api_key_present=%s, openrouter_api_key_present=%s", 
+             settings.ia_enabled, settings.ia_provider, bool(settings.gemini_api_key), bool(settings.openrouter_api_key))
     
     if not settings.ia_enabled:
         log.warning("IA desabilitada, retornando None")
         return None
     
-    if not settings.openrouter_api_key:
-        log.warning("OpenRouter habilitado mas API key não configurada, retornando None")
-        return None
+    # Verifica qual provider está configurado
+    provider = settings.ia_provider.lower()
     
-    log.info("Chamando _analisar_openrouter com contexto de %d chars", len(contexto))
-    resultado = await _analisar_openrouter(pergunta, contexto, max_tokens)
+    if provider == "openrouter":
+        if not settings.openrouter_api_key:
+            log.warning("OpenRouter habilitado mas API key não configurada, retornando None")
+            return None
+        log.info("Chamando _analisar_openrouter com contexto de %d chars", len(contexto))
+        resultado = await _analisar_openrouter(pergunta, contexto, max_tokens)
+    else:  # gemini (padrão)
+        if not settings.gemini_api_key:
+            log.warning("Gemini habilitado mas API key não configurada, retornando None")
+            return None
+        log.info("Chamando _analisar_gemini com contexto de %d chars", len(contexto))
+        resultado = await _analisar_gemini(pergunta, contexto, max_tokens)
+    
     log.info("analisar() retornou: %s", "sucesso" if resultado else "None")
     return resultado
+
+
+async def _analisar_gemini(
+    pergunta: str,
+    contexto: str,
+    max_tokens: int = 512,
+) -> Optional[dict[str, Any]]:
+    """Envia prompt ao Gemini e retorna JSON parseado."""
+    import asyncio
+    from config import settings
+
+    # O chamador (ia_rules.py) é responsável por pré-fatiar o contexto ao
+    # que é relevante para cada pergunta. Aqui apenas aplicamos um limite de
+    # segurança contra entradas absurdamente grandes, preservando início e fim.
+    safety = _limite_contexto_chars(settings.ia_model)
+    if len(contexto) > safety:
+        metade = safety // 2
+        log.warning("Contexto excede %d chars (%d); truncando.", safety, len(contexto))
+        contexto_usado = contexto[:metade] + "\n\n[...]\n\n" + contexto[-metade:]
+    else:
+        contexto_usado = contexto
+    prompt = f"{_SISTEMA}\n\n{pergunta}\n\nTEXTO:\n{contexto_usado}"
+
+    last_error: Exception | None = None
+    # Retry com backoff exponencial (150s, 300s)
+    timeouts = [90.0, 150.0]
+    for attempt in range(len(timeouts)):
+        try:
+            client = _get_genai_client()
+            cfg = _config_geracao(max_tokens, settings.ia_model)
+            timeout = timeouts[attempt]
+            resp = await asyncio.wait_for(
+                client.aio.models.generate_content(
+                    model=settings.ia_model,
+                    contents=prompt,
+                    config=cfg,
+                ),
+                timeout=timeout,
+            )
+            # Acessa o texto de todos os parts do candidato (evita truncagem de resp.text)
+            txt = ""
+            finish_reason = None
+            try:
+                cand = resp.candidates[0]
+                finish_reason = getattr(cand, "finish_reason", None)
+                for part in cand.content.parts:
+                    txt += part.text or ""
+            except Exception:
+                txt = resp.text or ""
+            txt = txt.strip()
+
+            log.info(
+                "Gemini resposta raw (%d chars) finish_reason=%s: %.400s",
+                len(txt), finish_reason, txt,
+            )
+
+            if not txt:
+                log.warning("Gemini retornou resposta vazia.")
+                if attempt == 0:
+                    continue
+                return None
+            # Remove delimitadores de bloco de código, se presentes
+            if "```json" in txt:
+                txt = txt.split("```json")[1].split("```")[0].strip()
+            elif "```" in txt:
+                txt = txt.split("```")[1].split("```")[0].strip()
+            # Extrai o objeto JSON (ignora texto antes/depois)
+            inicio = txt.find("{")
+            fim = txt.rfind("}") + 1
+            if inicio >= 0 and fim > inicio:
+                txt = txt[inicio:fim]
+            return json.loads(txt)
+        except json.JSONDecodeError as exc:
+            last_error = exc
+            log.warning("JSON do Gemini inválido (tentativa %d/%d): %s", attempt + 1, len(timeouts), exc)
+            if attempt < len(timeouts) - 1:
+                await asyncio.sleep(2 ** attempt)  # Backoff: 1s, 2s, 4s...
+                continue
+            return None
+        except asyncio.TimeoutError as exc:
+            last_error = exc
+            log.warning("Timeout do Gemini (tentativa %d/%d, timeout=%.1fs)", attempt + 1, len(timeouts), timeouts[attempt])
+            if attempt < len(timeouts) - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            return None
+        except Exception as exc:
+            last_error = exc
+            log.warning("Análise por Gemini falhou (tentativa %d/%d): %s", attempt + 1, len(timeouts), exc)
+            if attempt < len(timeouts) - 1:
+                await asyncio.sleep(2 ** attempt)
+                continue
+            return None
+
+    if last_error:
+        log.warning("Análise por Gemini esgotou tentativas: %s", last_error)
+    return None
 
 
 async def _analisar_openrouter(

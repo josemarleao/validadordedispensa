@@ -53,8 +53,11 @@ async def reclassificar_desconhecidos_com_ia(
     """
     from config import settings
 
-    # Verifica se API key do OpenRouter está configurada
-    if not settings.ia_enabled or not settings.openrouter_api_key:
+    # Verifica qual provider está configurado e se a API key correspondente está presente
+    provider = settings.ia_provider.lower()
+    api_key_configurada = bool(settings.gemini_api_key) if provider == "gemini" else bool(settings.openrouter_api_key)
+    
+    if not settings.ia_enabled or not api_key_configurada:
         return segmentos
 
     candidatos = [
