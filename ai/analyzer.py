@@ -39,7 +39,12 @@ _SISTEMA = (
 def _get_openrouter_model() -> str:
     """Retorna o modelo OpenRouter a ser usado."""
     from config import settings
-    return settings.ia_model or "openrouter/free"
+    # Usa o modelo configurado no secret, não o padrão "openrouter/free"
+    # que tem rate limit muito restrito (16 req/min)
+    if settings.ia_model:
+        return settings.ia_model
+    # Fallback para modelo com limite maior
+    return "meta-llama/llama-3.3-70b-instruct:free"
 
 
 async def analisar(
