@@ -46,7 +46,7 @@ def _fatiar_secoes(
     """Retorna cabeçalho + rodapé + trechos das seções pedidas.
 
     Produz ~12 k chars independente do tamanho do TR, garantindo que cada
-    chamada ao Gemini só receba o que é relevante para a pergunta.
+    chamada à IA só receba o que é relevante para a pergunta.
 
     Args:
         texto:     texto completo do segmento TR.
@@ -138,7 +138,7 @@ def _ia(item: ResultadoItem) -> ResultadoItem:
 
 
 def _de_avaliacao(documento: str, av: dict) -> ResultadoItem:
-    """Converte um item da resposta JSON do Gemini em ResultadoItem."""
+    """Converte um item da resposta JSON da IA em ResultadoItem."""
     nome = av.get("item", "Análise IA")
     obs  = av.get("observacao", "")
     if av.get("conforme"):
@@ -782,7 +782,7 @@ async def _double_check_doc(
     itens: list[ResultadoItem],
     contexto: str,
 ) -> list[dict]:
-    """Envia um lote de itens (CONFORME, INCONFORME, PENDÊNCIA) ao Gemini para validação contextual."""
+    """Envia um lote de itens (CONFORME, INCONFORME, PENDÊNCIA) à IA para validação contextual."""
     hoje = date.today().strftime("%d/%m/%Y")
     lista = "\n".join(
         f'{i+1}. "{it.item}" ({it.status.value}): {it.descricao}'

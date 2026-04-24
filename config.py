@@ -16,13 +16,9 @@ class Settings(BaseSettings):
     azure_doc_intelligence_endpoint: Optional[str] = None
     azure_doc_intelligence_key: Optional[str] = None
 
-    # Google AI (Gemini API) – análise subsidiária por IA (modelos Gemini ou Gemma)
-    gemini_api_key: Optional[str] = None
-    ia_enabled: bool = False
-    
-    # OpenRouter – alternativa gratuita para IA (modelos free) - PADRÃO
+    # OpenRouter – IA para análise de documentos
     openrouter_api_key: Optional[str] = None
-    ia_provider: str = "openrouter"  # "gemini" ou "openrouter"
+    ia_enabled: bool = False
     ia_model: str = "openrouter/free"  # Modelo padrão OpenRouter free
 
     # Comportamento do serviço

@@ -43,7 +43,7 @@ _IA_SEMAPHORE = asyncio.Semaphore(6)
 async def reclassificar_desconhecidos_com_ia(
     segmentos: list[DocumentoExtraido],
 ) -> list[DocumentoExtraido]:
-    """Tenta reclassificar via Gemini os segmentos DESCONHECIDO que possuem texto.
+    """Tenta reclassificar via IA os segmentos DESCONHECIDO que possuem texto.
 
     Retorna a lista completa com os segmentos DESCONHECIDO substituídos
     pelo tipo identificado pela IA (quando possível).
@@ -53,14 +53,8 @@ async def reclassificar_desconhecidos_com_ia(
     """
     from config import settings
 
-    # Verifica a API key correta dependendo do provider
-    api_key_configurada = False
-    if settings.ia_provider.lower() == "openrouter":
-        api_key_configurada = bool(settings.openrouter_api_key)
-    else:  # gemini
-        api_key_configurada = bool(settings.gemini_api_key)
-    
-    if not settings.ia_enabled or not api_key_configurada:
+    # Verifica se API key do OpenRouter está configurada
+    if not settings.ia_enabled or not settings.openrouter_api_key:
         return segmentos
 
     candidatos = [
@@ -105,7 +99,7 @@ async def _classificar_segmento_com_semaphore(seg: DocumentoExtraido) -> str:
 
 
 async def _classificar_segmento(seg: DocumentoExtraido) -> str:
-    """Pergunta ao Gemini o tipo do documento e retorna o nome do tipo ou 'DESCONHECIDO'."""
+    """Pergunta à IA o tipo do documento e retorna o nome do tipo ou 'DESCONHECIDO'."""
     from ai.analyzer import analisar
 
     # Contexto: início (onde fica o título/tipo) + fim (onde fica rodapé/assinatura).

@@ -142,12 +142,8 @@ async def executar_saneamento_async(processo: ProcessoExtraido) -> RelatorioSane
     # Regras determinísticas em paralelo (CPU-bound)
     deterministicos = await _coletar_deterministicos_parallel(processo)
 
-    # Verifica a API key correta dependendo do provider configurado
-    api_key_configurada = False
-    if settings.ia_provider.lower() == "openrouter":
-        api_key_configurada = bool(settings.openrouter_api_key)
-    else:  # gemini
-        api_key_configurada = bool(settings.gemini_api_key)
+    # Verifica se API key do OpenRouter está configurada
+    api_key_configurada = bool(settings.openrouter_api_key)
     
     # Análise OBRIGATÓRIA de DFD (Coerência DFD × TR) pela IA - sempre executada se API key configurada
     novos_ia_dfd = []
