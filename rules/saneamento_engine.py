@@ -138,12 +138,15 @@ async def executar_saneamento_async(processo: ProcessoExtraido) -> RelatorioSane
     from config import settings
 
     log.info("Iniciando saneamento (async) do processo %s", processo.numero_sei)
+    log.info("Configurações IA - ia_enabled=%s, ia_model=%s, openrouter_api_key_configurada=%s", 
+             settings.ia_enabled, settings.ia_model, bool(settings.openrouter_api_key))
 
     # Regras determinísticas em paralelo (CPU-bound)
     deterministicos = await _coletar_deterministicos_parallel(processo)
 
     # Verifica se API key do OpenRouter está configurada
     api_key_configurada = bool(settings.openrouter_api_key)
+    log.info("API key configurada: %s", api_key_configurada)
     
     # Análise OBRIGATÓRIA de DFD (Coerência DFD × TR) pela IA - sempre executada se API key configurada
     novos_ia_dfd = []
