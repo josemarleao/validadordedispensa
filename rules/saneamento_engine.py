@@ -142,7 +142,6 @@ async def executar_saneamento_async(processo: ProcessoExtraido) -> RelatorioSane
     # Regras determinísticas em paralelo (CPU-bound)
     deterministicos = await _coletar_deterministicos_parallel(processo)
 
-    # Análise por IA (somente se habilitada)
     # Verifica a API key correta dependendo do provider configurado
     api_key_configurada = False
     if settings.ia_provider.lower() == "openrouter":
@@ -150,21 +149,37 @@ async def executar_saneamento_async(processo: ProcessoExtraido) -> RelatorioSane
     else:  # gemini
         api_key_configurada = bool(settings.gemini_api_key)
     
+    # Análise OBRIGATÓRIA de DFD (Coerência DFD × TR) pela IA - sempre executada se API key configurada
+    novos_ia_dfd = []
+    if api_key_configurada and processo.dfd and processo.dfd.texto_original:
+        try:
+            from .ia_rules import _analisar_dfd
+            novos_ia_dfd = await _analisar_dfd(processo)
+            log.info("Análise obrigatória de DFD (Coerência DFD × TR) executada: %d item(ns)", len(novos_ia_dfd))
+        except Exception as exc:
+            log.warning("Análise obrigatória de DFD falhou: %s", exc)
+    
+    # Análise opcional por IA (TR, tabela de preços, orçamentos) - somente se habilitada
+    novos_ia_opcionais = []
     if settings.ia_enabled and api_key_configurada:
         try:
             from .ia_rules import aplicar_regras_ia, double_check_inconformidades
 
-            # Fase 1: IA resolve PENDÊNCIAs e acrescenta análise qualitativa
-            deterministicos, novos_ia = await aplicar_regras_ia(processo, deterministicos)
-            todos = deterministicos + novos_ia
-            log.info("IA acrescentou %d item(ns) ao relatório.", len(novos_ia))
+            # Fase 1: IA resolve PENDÊNCIAs e acrescenta análise qualitativa (exceto DFD que já foi analisado)
+            # Passamos deterministicos + novos_ia_dfd para evitar duplicação
+            deterministicos_sem_dfd_ia = [r for r in deterministicos if not (r.documento == "DFD" and r.item == "Coerência DFD × TR")]
+            deterministicos_filtrados, novos_ia_opcionais = await aplicar_regras_ia(processo, deterministicos_sem_dfd_ia)
+            novos_ia_opcionais = [r for r in novos_ia_opcionais if not (r.documento == "DFD" and r.item == "Coerência DFD × TR")]
+            
+            todos = deterministicos + novos_ia_dfd + novos_ia_opcionais
+            log.info("IA opcional acrescentou %d item(ns) ao relatório.", len(novos_ia_opcionais))
 
             # Fase 2: double-check — IA confirma ou descarta cada INCONFORME/PENDÊNCIA
             todos = await double_check_inconformidades(processo, todos)
         except Exception as exc:
-            log.warning("Análise por IA falhou inteiramente: %s – usando só regras determinísticas.", exc)
-            todos = deterministicos
+            log.warning("Análise opcional por IA falhou: %s – usando análise obrigatória de DFD + regras determinísticas.", exc)
+            todos = deterministicos + novos_ia_dfd
     else:
-        todos = deterministicos
+        todos = deterministicos + novos_ia_dfd
 
     return _montar_relatorio(processo, todos)

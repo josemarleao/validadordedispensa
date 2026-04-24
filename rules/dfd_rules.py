@@ -27,7 +27,7 @@ def aplicar_regras_dfd(processo: ProcessoExtraido) -> list[ResultadoItem]:
         resultados.append(inconforme(_DOC, "Item 1 – Objeto", "Objeto não identificado no DFD."))
     else:
         resultados.append(ok(_DOC, "Item 1 – Objeto", f"Objeto: {dfd.objeto[:80]}"))
-        # Coerência DFD × TR será verificada pela IA
+        # Coerência DFD × TR será verificada obrigatoriamente pela IA
 
     # TIC
     if not dfd.tic:
