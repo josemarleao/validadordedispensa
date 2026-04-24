@@ -354,7 +354,7 @@ async def _analisar_dfd(processo: ProcessoExtraido) -> list[ResultadoItem]:
 
 IMPORTANTE: Ignore completamente erros de formatação, OCR ou digitação (ex: "Dede.zação" em vez de "Dedetização"). Considere que o texto pode ter problemas de extração do PDF. Avalie APENAS o conteúdo substantivo. NÃO aponte erros de OCR/OCR como inconformidade.
 
-1. "Objeto" – a descrição do objeto é específica e suficiente para identificar o que será contratado? (ignore erros de formatação/OCR, NÃO aponte erros de digitação como inconformidade)
+1. "Objeto" – a descrição do objeto é específica e suficiente para identificar o que será contratado? (ignore erros de formatação/OCR, NÃO aponte erros de digitação como inconformidade. NÃO analise especificações técnicas detalhadas, quantitativos por unidade ou parâmetros de qualidade exigidos - esses pontos são verificados em outras partes do documento como planilha de itens e especificações técnicas)
 2. "Justificativa PCA" – se a contratação não está prevista no PCA, a justificativa é plausível?
 3. "Coerência Geral" – objeto, unidade, responsável e superior são coerentes entre si? (ignore erros de formatação/OCR, NÃO aponte erros de digitação como inconformidade)
 4. "Coerência DFD × TR" – o objeto descrito no DFD é coerente com o objeto do Termo de Referência (TR)? VERIFIQUE RIGOROSAMENTE: 
@@ -431,7 +431,7 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
 
     # ── Chamada 2: aspectos qualitativos ──────────────────────────────────────
     qualitativos: list[tuple[str, str]] = [
-        ("Objeto (IA)", "A descrição do objeto é específica e adequada ao tipo de serviço? (ignore completamente erros de formatação/OCR/digitação, NÃO aponte erros de OCR como inconformidade)"),
+        ("Objeto (IA)", "A descrição do objeto é específica e adequada ao tipo de serviço? (ignore completamente erros de formatação/OCR/digitação, NÃO aponte erros de OCR como inconformidade. NÃO analise especificações técnicas detalhadas, quantitativos por unidade ou parâmetros de qualidade exigidos - esses pontos são verificados em outras partes do documento como planilha de itens e especificações técnicas)"),
         ("Coerência Geral (IA)", "O TR está internamente consistente (objeto, regime, prazos e garantias coerentes)? (ignore erros de formatação/OCR)"),
     ]
     if tr.divulgacao.opcao == "A":
@@ -522,7 +522,7 @@ async def _analisar_tr_aquisicoes(processo: ProcessoExtraido) -> list[ResultadoI
     )
 
     qualitativos: list[tuple[str, str]] = [
-        ("Objeto (IA)", "A descrição do bem é específica e adequada? (ignore completamente erros de formatação/OCR/digitação, NÃO aponte erros de OCR como inconformidade)"),
+        ("Objeto (IA)", "A descrição do bem é específica e adequada? (ignore completamente erros de formatação/OCR/digitação, NÃO aponte erros de OCR como inconformidade. NÃO analise especificações técnicas detalhadas, quantitativos por unidade ou parâmetros de qualidade exigidos - esses pontos são verificados em outras partes do documento como planilha de itens e especificações técnicas)"),
         ("Justificativa da Quantidade (IA)", "A quantidade está objetivamente justificada?"),
         ("Coerência Geral (IA)", "O TR está internamente consistente? (ignore erros de formatação/OCR)"),
     ]
