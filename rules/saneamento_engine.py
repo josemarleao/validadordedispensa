@@ -143,7 +143,14 @@ async def executar_saneamento_async(processo: ProcessoExtraido) -> RelatorioSane
     deterministicos = await _coletar_deterministicos_parallel(processo)
 
     # Análise por IA (somente se habilitada)
-    if settings.ia_enabled and settings.gemini_api_key:
+    # Verifica a API key correta dependendo do provider configurado
+    api_key_configurada = False
+    if settings.ia_provider.lower() == "openrouter":
+        api_key_configurada = bool(settings.openrouter_api_key)
+    else:  # gemini
+        api_key_configurada = bool(settings.gemini_api_key)
+    
+    if settings.ia_enabled and api_key_configurada:
         try:
             from .ia_rules import aplicar_regras_ia, double_check_inconformidades
 
