@@ -60,6 +60,7 @@ jobs:
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --image ${{ env.BASE_IMAGE }}:latest \
+            --revision-suffix $(date +%s) \
             --output none
 
       - name: Configure environment variables
