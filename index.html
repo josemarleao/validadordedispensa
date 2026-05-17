@@ -505,7 +505,7 @@ async function analisar() {
   form.append('unidade_demandante', unidade);
 
   try {
-    const resp = await fetch('https://saneamento-pdf.purplemoss-25ff039e.brazilsouth.azurecontainerapps.io/saneamento/processo/stream', { 
+    const resp = await fetch('https://validador-dispensa.onrender.com/saneamento/processo/stream', { 
       method: 'POST', 
       body: form,
       headers: {
