@@ -1,81 +1,14 @@
-name: Deploy to Azure Container Apps
+name: Deploy to Render
 
 on:
   push:
     branches:
       - main
       - master
-  workflow_dispatch:
-
-env:
-  BASE_IMAGE: dccl/saneamento-pdf
-  APP_NAME: saneamento-pdf
-  RESOURCE_GROUP: mpba-saneamento
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Extract metadata for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.BASE_IMAGE }}
-          tags: |
-            type=raw,value=latest
-            type=sha,prefix=
-            type=raw,value={{date 'YYYYMMDDHHmmss'}}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=registry,ref=${{ env.BASE_IMAGE }}:latest
-          cache-to: type=inline
-
-      - name: Log in to Azure
-        uses: azure/login@v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Update Azure Container App
-        run: |
-          az containerapp update \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --image ${{ env.BASE_IMAGE }}:latest \
-            --revision-suffix $(date +%s) \
-            --output none
-
-      - name: Configure environment variables
-        run: |
-          az containerapp update \
-            --name ${{ env.APP_NAME }} \
-            --resource-group ${{ env.RESOURCE_GROUP }} \
-            --set-env-vars \
-              IA_ENABLED="true" \
-              IA_MODEL="${{ secrets.IA_MODEL }}" \
-              KILO_API_KEY="${{ secrets.KILO_API_KEY }}" \
-            --output none
-
-      - name: Deployment summary
-        run: |
-          echo "🚀 Deploy concluído!"
-          echo "📦 Imagem: ${{ env.BASE_IMAGE }}:latest"
-          echo "🌐 API: https://saneamento-pdf.purplemoss-25ff039e.brazilsouth.azurecontainerapps.io/docs"
+      - name: Deploy via Render Blueprint
+        run: echo "Deploy automático gerenciado pelo Render via render.yaml"
