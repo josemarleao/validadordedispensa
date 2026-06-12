@@ -573,7 +573,7 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
         "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
     )
 
-    r = await analisar(pergunta, contexto, max_tokens=2200)
+    r = await analisar(pergunta, contexto)
     if not r:
         return []
     return [_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", [])]
@@ -738,7 +738,7 @@ async def _analisar_tr_aquisicoes(processo: ProcessoExtraido) -> list[ResultadoI
         "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
     )
 
-    r = await analisar(pergunta, contexto, max_tokens=2000)
+    r = await analisar(pergunta, contexto)
     if not r:
         return []
     return [_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", [])]
