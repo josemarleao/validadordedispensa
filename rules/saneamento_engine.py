@@ -158,9 +158,9 @@ async def executar_saneamento_async(processo: ProcessoExtraido) -> RelatorioSane
         except Exception as exc:
             log.warning("Análise obrigatória de DFD falhou: %s", exc)
     
-    # Análise opcional por IA (TR, tabela de preços, orçamentos) - somente se habilitada
+    # Análise por IA (TR, tabela de preços, orçamentos) - sempre que API key configurada
     novos_ia_opcionais = []
-    if settings.ia_enabled and api_key_configurada:
+    if api_key_configurada:
         try:
             from .ia_rules import aplicar_regras_ia, double_check_inconformidades
 
