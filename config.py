@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     kilo_api_key: Optional[str] = None
     kilo_base_url: str = "https://api.kilo.ai/api/gateway"
     ia_enabled: bool = False
-    ia_model: str = "kilo-auto/free"  # Modelo padrão Kilo AI
+    ia_model: str = "inclusionai/ring-2.6-1t:free"
 
     # Comportamento do serviço
     max_pdf_size_mb: int = 50
