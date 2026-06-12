@@ -18,4 +18,4 @@ services:
       - key: KILO_BASE_URL
         value: https://api.kilo.ai/api/gateway
       - key: IA_MODEL
-        value: inclusionai/ring-2.6-1t:free
+        value: inclusionai/ling-2.6-1t:free
