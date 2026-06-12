@@ -427,13 +427,12 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
         "(e) não aplicável."
     )
 
-    pergunta = (
+    _pre = (
         "## PAPEL\n"
         "Você é analista de conformidade documental especializado em contratações públicas regidas pela "
         "Lei Federal nº 14.133/2021 e Lei Estadual/BA nº 14.634/2023, no âmbito do MPBA. "
         "Verifique presença, completude e coerência formal dos campos do TR de SERVIÇOS. "
         "Não emita juízo de mérito sobre adequação técnica ou suficiência jurídica.\n\n"
-
         "## MARCADORES DE NÃO PREENCHIMENTO\n"
         "Considere NÃO PREENCHIDO qualquer campo com: [inserir texto], [Inserir ...], [Indicar ...], "
         "[Informar ...], [Especificar.], [justificar ...], [inserir prazo], [inserir endereço], "
@@ -443,9 +442,22 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
         "Considere 'marcada' apenas quando houver (X), (x), [X], ☑ ou marca equivalente. ( ) vazio = não marcada. "
         "REGRA DE PREVALÊNCIA: quando um campo de escolha tiver opção inequivocamente marcada, "
         "placeholders das opções NÃO marcadas do mesmo campo NÃO geram inconformidade.\n\n"
+    )
+    _sai = (
+        "\n## INSTRUÇÃO DE SAÍDA\n"
+        "Avalie CADA regra acima. Use 'pendencia': true para ambiguidades objetivas (ex.: duas opções onde "
+        "só cabe uma; incoerência entre subtópicos; campo condicional incompleto). "
+        "Responda APENAS com JSON válido, sem texto adicional:\n"
+        '{"avaliacoes":[{"item":"<ID exato – Título exato>","conforme":true,"pendencia":false,'
+        '"observacao":"<evidência literal curta ou descrição da falha, até 120 chars>"}]}\n'
+        "Inclua TODOS os itens avaliados (conformes e não conformes). "
+        "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
+    )
 
-        "## REGRAS (avaliar nesta ordem exata)\n"
-        f"1.1 – Indicação do Objeto: (a) prestação de serviços descrita concretamente, placeholder substituído; "
+    pergunta_1 = (
+        _pre
+        + "## REGRAS – PARTE 1 (seções 1 e 2: identificação, justificativa, habilitações)\n"
+        + f"1.1 – Indicação do Objeto: (a) prestação de serviços descrita concretamente, placeholder substituído; "
         "(b) expressão 'através do Sistema de Registro de Preços' resolvida — mantida somente se 1.6 = C ou D, "
         "excluída se 1.6 = A ou B; (c) remissão ao Apenso I atendida pela existência do Apenso I preenchido; "
         f"{regra_1_1_de}\n"
@@ -479,7 +491,13 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
         "2.2.4 – Habilitação Econômico-Financeira: ao menos UMA opção marcada (A=não exigida, B, C ou D); "
         "se A marcada simultaneamente com B/C/D = PENDÊNCIA; se C: percentual preenchido e ≤ 10%; "
         "se D: exigência indicada e justificada (art. 69).\n"
-        "3.1 – Regime de Execução: UMA opção marcada (A=empreitada por preço global, "
+        + _sai
+    )
+
+    pergunta_2 = (
+        _pre
+        + "## REGRAS – PARTE 2 (seções 3 e apensos: execução, preços, vigência, obrigações)\n"
+        + "3.1 – Regime de Execução: UMA opção marcada (A=empreitada por preço global, "
         "B=empreitada por preço unitário, C=outro com indicação preenchida).\n"
         "3.2 – Prazo para Retirada da Nota de Empenho: em 3.2.1, prazo preenchido e alternativa "
         "'[úteis ou corridos]' resolvida para uma única forma de contagem.\n"
@@ -547,7 +565,7 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
         "3.15.2 – Obrigações do Contratante — Específicas: UMA opção marcada (A=não existem ou "
         "B=específicas indicadas); NÃO classifique a numeração interna '3.16.1.x' como inconformidade — "
         "é erro tipográfico do próprio modelo.\n"
-        "3.16 – Necessidade de Garantia Contratual: UMA opção marcada (A=não será exigida ou B=será exigida); "
+        "3.16 – Indicação sobre a Necessidade de Garantia Contratual: UMA opção marcada (A=não será exigida ou B=será exigida); "
         "se B: B.1 com UMA opção (I=5% ou II=outro percentual >5% e ≤10% com justificativa); B.2 com prazo "
         "de apresentação preenchido; B.3 com UMA opção de duração (I=mesma da contratação ou II=dias/meses "
         "após a vigência com número preenchido).\n"
@@ -561,22 +579,19 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
         "eletrônica — deve ter sido excluída (sua permanência = NÃO CONFORME).\n"
         "AP-II – Apenso II (Especificações Técnicas Detalhadas): se houver especificações técnicas detalhadas, "
         "texto preenchido; caso contrário, Apenso II deve ter sido excluído; se 3.4=C ou 3.5.1=E, "
-        "o Apenso II deve existir e estar preenchido (ausência = NÃO CONFORME).\n\n"
-
-        "## INSTRUÇÃO DE SAÍDA\n"
-        "Avalie CADA regra acima. Use 'pendencia': true para ambiguidades objetivas (ex.: duas opções onde "
-        "só cabe uma; incoerência entre subtópicos; campo condicional incompleto). "
-        "Responda APENAS com JSON válido, sem texto adicional:\n"
-        '{"avaliacoes":[{"item":"<ID exato – Título exato>","conforme":true,"pendencia":false,'
-        '"observacao":"<evidência literal curta ou descrição da falha, até 120 chars>"}]}\n'
-        "Inclua TODOS os itens avaliados (conformes e não conformes). "
-        "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
+        "o Apenso II deve existir e estar preenchido (ausência = NÃO CONFORME).\n"
+        + _sai
     )
 
-    r = await analisar(pergunta, contexto)
-    if not r:
-        return []
-    return [_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", [])]
+    r1, r2 = await asyncio.gather(
+        analisar(pergunta_1, contexto),
+        analisar(pergunta_2, contexto),
+    )
+    itens: list[ResultadoItem] = []
+    for r in (r1, r2):
+        if r:
+            itens.extend(_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", []))
+    return itens
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -619,22 +634,34 @@ async def _analisar_tr_aquisicoes(processo: ProcessoExtraido) -> list[ResultadoI
         "(d) DFD não fornecido — informar na observação e marcar conforme."
     )
 
-    pergunta = (
+    _pre = (
         "## PAPEL\n"
         "Você é analista de conformidade documental especializado em contratações públicas regidas pela "
         "Lei Federal nº 14.133/2021 e Lei Estadual/BA nº 14.634/2023, no âmbito do MPBA. "
         "Verifique presença, completude e coerência formal dos campos. "
         "Não emita juízo de mérito sobre adequação técnica ou suficiência jurídica.\n\n"
-
         "## MARCADORES DE NÃO PREENCHIMENTO\n"
         "Considere NÃO PREENCHIDO qualquer campo com: [inserir texto], [Inserir ...], [Indicar ...], xxxx, "
         "_____, ( ) sem marcação, Ex.:, (PREENCHER, CONFORME O CASO), INSERIR ASSINATURA DIGITAL, "
         "202x não substituído, e-mail/telefone incompleto. "
         "Considere 'marcada' apenas quando houver (X), (x), [X], ☑ ou marca equivalente no início da linha. "
         "( ) vazio = não marcada. Se alguma opção estiver marcada, desconsidere placeholder residual.\n\n"
+    )
+    _sai = (
+        "\n## INSTRUÇÃO DE SAÍDA\n"
+        "Avalie CADA regra acima. Use 'pendencia': true para ambiguidades objetivas (ex.: dois campos "
+        "obrigatórios onde só cabe um, campo condicional incompleto). "
+        "Responda APENAS com JSON válido, sem texto adicional:\n"
+        '{"avaliacoes":[{"item":"<ID exato – Título exato>","conforme":true,"pendencia":false,'
+        '"observacao":"<evidência literal curta ou descrição da falha, até 120 chars>"}]}\n'
+        "Inclua TODOS os itens avaliados (conformes e não conformes). "
+        "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
+    )
 
-        "## REGRAS (avaliar nesta ordem exata)\n"
-        f"1.1 – Indicação do Objeto: (a) objeto descrito concretamente; "
+    pergunta_1 = (
+        _pre
+        + "## REGRAS – PARTE 1 (seções 1 e 2: identificação, justificativa, habilitações)\n"
+        + f"1.1 – Indicação do Objeto: (a) objeto descrito concretamente; "
         "(b) declaração de que NÃO é bem de luxo (Ato Normativo nº 004/2024) presente; "
         "(c) remissão ao Apenso I presente; "
         f"{regra_1_1_d}\n"
@@ -657,7 +684,13 @@ async def _analisar_tr_aquisicoes(processo: ProcessoExtraido) -> list[ResultadoI
         "aplicáveis preenchidos e blocos não utilizados excluídos.\n"
         "2.2.4 – Habilitação Econômico-Financeira: ao menos UMA opção marcada (A, B, C ou D); "
         "se C, percentual ≤ 10%; se D, exigência indicada e justificada (art. 69).\n"
-        "3.1 – Prazo para Retirada da Nota de Empenho: prazo preenchido e definido 'úteis' ou 'corridos'.\n"
+        + _sai
+    )
+
+    pergunta_2 = (
+        _pre
+        + "## REGRAS – PARTE 2 (seções 3 e apensos: execução, entrega, garantia, vigência, obrigações)\n"
+        + "3.1 – Prazo para Retirada da Nota de Empenho: prazo preenchido e definido 'úteis' ou 'corridos'.\n"
         "3.2 – Forma de Execução: (3.2.1) prazo de entrega preenchido e úteis/corridos definido; "
         "(3.2.2) UMA opção (A=recebimento do empenho ou B=outro; se B, texto informado); "
         "(3.2.3) UMA opção sobre prorrogação do prazo de entrega (NÃO ou SIM); "
@@ -726,22 +759,19 @@ async def _analisar_tr_aquisicoes(processo: ProcessoExtraido) -> list[ResultadoI
         "em 2.1), tabela de parametrização CATMAT deve ter sido excluída.\n"
         "AP-II – Apenso II (Especificações Técnicas): se houver especificações detalhadas, texto "
         "preenchido; caso contrário, Apenso II deve ter sido excluído — se presente mas vazio, "
-        "NÃO CONFORME.\n\n"
-
-        "## INSTRUÇÃO DE SAÍDA\n"
-        "Avalie CADA regra acima. Use 'pendencia': true para ambiguidades objetivas (ex.: dois campos "
-        "obrigatórios onde só cabe um, campo condicional incompleto). "
-        "Responda APENAS com JSON válido, sem texto adicional:\n"
-        '{"avaliacoes":[{"item":"<ID exato – Título exato>","conforme":true,"pendencia":false,'
-        '"observacao":"<evidência literal curta ou descrição da falha, até 120 chars>"}]}\n'
-        "Inclua TODOS os itens avaliados (conformes e não conformes). "
-        "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
+        "NÃO CONFORME.\n"
+        + _sai
     )
 
-    r = await analisar(pergunta, contexto)
-    if not r:
-        return []
-    return [_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", [])]
+    r1, r2 = await asyncio.gather(
+        analisar(pergunta_1, contexto),
+        analisar(pergunta_2, contexto),
+    )
+    itens: list[ResultadoItem] = []
+    for r in (r1, r2):
+        if r:
+            itens.extend(_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", []))
+    return itens
 
 
 # ─────────────────────────────────────────────────────────────────────────────
