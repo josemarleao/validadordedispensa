@@ -32,6 +32,52 @@ from ai.analyzer import analisar
 log = logging.getLogger(__name__)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Utilitário: fatiamento inteligente de contexto
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fatiar_secoes(
+    texto: str,
+    secoes: list[str],
+    cabecalho: int = 3000,
+    rodape: int = 1500,
+    bloco: int = 700,
+) -> str:
+    """Retorna cabeçalho + rodapé + trechos das seções pedidas.
+
+    Produz ~12 k chars independente do tamanho do TR, garantindo que cada
+    chamada à IA só receba o que é relevante para a pergunta.
+
+    Args:
+        texto:     texto completo do segmento TR.
+        secoes:    lista de números de seção a localizar (ex: ["3.5", "3.6"]).
+        cabecalho: chars iniciais sempre incluídos (objeto, fundamentação…).
+        rodape:    chars finais sempre incluídos (assinatura, responsável…).
+        bloco:     chars extraídos ao redor de cada seção encontrada.
+    """
+    n = len(texto)
+    if n <= cabecalho + rodape:
+        return texto
+
+    partes: list[str] = [texto[:cabecalho]]
+    miolo = texto[cabecalho: n - rodape]
+
+    for sec in secoes:
+        # Tolera ruído de OCR entre dígitos: "3.5" → r"3[^\d\n]{0,3}5"
+        parts = sec.split(".")
+        if len(parts) == 2:
+            pat = rf"(?<!\d){re.escape(parts[0])}[^\d\n]{{0,3}}{re.escape(parts[1])}(?!\d)"
+        else:
+            pat = re.escape(sec)
+
+        m = re.search(pat, miolo, re.IGNORECASE)
+        if m:
+            ini = max(0, m.start() - 50)
+            fim = min(len(miolo), ini + bloco)
+            partes.append(f"\n[...]\n{miolo[ini:fim]}")
+
+    partes.append(f"\n[...]\n{texto[-rodape:]}")
+    return "".join(partes)
 
 _DOC_DFD    = "DFD"
 _DOC_TR     = "Termo de Referência"
@@ -75,74 +121,6 @@ _DOUBLE_CHECK_TERMOS: dict[str, dict[str, list[str]]] = {
         "3.16 – Garantia Contratual": ["garantia contratual", "seguro garantia", "caução", "performance bond"],
         "3.7.4 – Multas": ["multa", "mora", "inexecução total", "penalidade"],
         "3.9.4 – Multas": ["multa", "mora", "inexecução total", "penalidade"],
-        # TR Serviços – análise abrangente (Jan/2026)
-        "1.1 – Indicação do Objeto": ["objeto", "indicação do objeto", "sistema de registro de preços", "apenso i"],
-        "1.2 – Justificativa do Quantitativo Definido": ["quantitativo", "quantidade", "justificativa do quantitativo"],
-        "1.3 – Natureza do Objeto": ["natureza do objeto", "serviço continuado", "parcelado", "imediato", "pontual", "por escopo"],
-        "1.4 – Fundamentação da Contratação": ["fundamentação", "justificativa", "motivação", "necessidade"],
-        "1.5 – Descrição da Solução como um Todo": ["solução", "descrição da solução"],
-        "1.6 – Formalização da Contratação": ["formalização", "nota de empenho", "instrumento substitutivo", "ata de registro", "contrato formal"],
-        "2.1 – Fundamentação Legal (Forma de Seleção)": ["base legal", "art. 75", "dispensa", "inciso", "eletrônica", "tradicional", "b.1", "b.2"],
-        "2.2.1 – Habilitação Jurídica": ["habilitação jurídica", "pessoa jurídica", "pessoa física"],
-        "2.2.2 – Habilitação Fiscal, Social e Trabalhista": ["regularidade fiscal", "certidão federal", "cndt", "fgts", "trabalhista"],
-        "2.2.3 – Habilitação Técnica": ["habilitação técnica", "atestado", "certidão técnica", "visita", "vistoria", "inscrição"],
-        "2.2.4 – Habilitação Econômico-Financeira": ["habilitação econômico", "balanço", "capital social", "patrimônio"],
-        "3.1 – Regime de Execução": ["regime de execução", "preço global", "preço unitário"],
-        "3.2 – Prazo para Retirada da Nota de Empenho": ["nota de empenho", "prazo para retirada", "3.2.1"],
-        "3.3 – Forma de Execução": ["local de execução", "agendamento", "dias e horários", "endereço", "cep"],
-        "3.4 – Prazo(s) de Execução": ["prazo de execução", "prazo para execução", "cronograma", "prorrogação do prazo"],
-        "3.5 – Regras de Garantia": ["garantia do serviço", "garantia legal", "garantia contratada", "chamado", "atendimento"],
-        "3.6 – Possibilidade ou Não de Subcontratação": ["subcontratação", "vedada", "admitida", "subcontratar"],
-        "3.7 – Modelo de Gestão e Fiscalização Contratual": ["fiscalização", "gestão contratual", "multa", "mora", "inexecução", "penalidade", "3.7.4"],
-        "3.8 – Condições de Recebimento do Objeto": ["recebimento provisório", "recebimento definitivo", "3.8.1", "3.8.2"],
-        "3.9 – Dos Preços": ["preços", "valor mensal", "valor unitário", "valor global", "custos", "encargos"],
-        "3.10 – Regras de Faturamento": ["faturamento", "nota fiscal", "periodicidade", "parcela", "mensal"],
-        "3.11 – Regras para Pagamento e Atualização Monetária": ["pagamento", "atualização monetária", "3.11"],
-        "3.12 – Reajustamento": ["reajustamento", "reajuste", "inpc", "índice", "correção"],
-        "3.13.1 – Vigência da ARP": ["ata de registro de preços", "arp", "vigência da ata", "3.13.1"],
-        "3.13.3 – Possibilidade de Prorrogação de Prazo de Vigência": ["prorrogação", "prazo de vigência", "admitida", "não admitida", "3.13.3"],
-        "3.14.1 – Obrigações da Contratada — Gerais": ["obrigações da contratada", "3.14.1.3", "3.14.1.5", "inserir prazo"],
-        "3.14.2 – Obrigações da Contratada — Específicas": ["obrigações específicas da contratada", "3.14.2"],
-        "3.15.2 – Obrigações do Contratante — Específicas": ["obrigações do contratante", "contratante", "3.15.2"],
-        "3.16 – Indicação sobre a Necessidade de Garantia Contratual": ["garantia contratual", "seguro garantia", "caução", "3.16"],
-        "3.17 – Informações Orçamentárias": ["informações orçamentárias", "orçamentário", "3.17"],
-        "3.18 – Responsável pelo Preenchimento": ["responsável", "matrícula", "assinatura", "servidor", "unidade administrativa"],
-        "AP-I – Apenso I (Tabela de Itens de Serviço)": ["apenso i", "tabela de itens", "catser", "unidade de medida", "parametrização"],
-        "AP-II – Apenso II (Especificações Técnicas)": ["apenso ii", "especificações técnicas", "especificação técnica"],
-        # TR Aquisições – análise abrangente (Jan/2026)
-        "1.1 – Indicação do Objeto": ["objeto", "indicação do objeto", "bem de luxo", "apenso i", "ato normativo"],
-        "1.2 – Indicação de Marca e/ou Modelo": ["marca", "modelo", "referência", "exclusivo", "equivalente"],
-        "1.3 – Justificativa do Quantitativo": ["quantitativo", "quantidade", "justificativa do quantitativo"],
-        "1.4 – Natureza do Objeto": ["natureza do objeto", "imediato", "parcelado", "continuado", "fornecimento"],
-        "1.5 – Fundamentação da Contratação": ["fundamentação", "justificativa", "motivação", "necessidade"],
-        "1.6 – Descrição da Solução como um Todo": ["solução", "descrição da solução"],
-        "1.7 – Formalização da Contratação": ["formalização", "nota de empenho", "instrumento substitutivo", "ata de registro"],
-        "2.1 – Fundamentação Legal (Forma de Seleção)": ["base legal", "art. 75", "dispensa", "inciso", "eletrônica", "tradicional"],
-        "2.2.1 – Habilitação Jurídica": ["habilitação jurídica", "pessoa jurídica", "pessoa física"],
-        "2.2.3 – Habilitação Técnica": ["habilitação técnica", "atestado", "certidão técnica", "requisitos técnicos"],
-        "2.2.4 – Habilitação Econômico-Financeira": ["habilitação econômico", "balanço", "capital social", "patrimônio"],
-        "3.1 – Prazo para Retirada da Nota de Empenho": ["nota de empenho", "prazo para retirada", "retirada"],
-        "3.2 – Forma de Execução": ["forma de execução", "prazo de entrega", "local de entrega", "agendamento", "horário"],
-        "3.3 – Regras sobre Montagem": ["montagem", "desmontado", "montado", "instalação do fornecedor"],
-        "3.4 – Regras para Instalação": ["instalação", "instalar", "prazo de instalação"],
-        "3.5 – Prazo de Validade para Bens Perecíveis": ["validade", "perecível", "prazo de validade", "embalagem"],
-        "3.6 – Regras de Garantia": ["garantia", "prazo de garantia", "fabricante", "atendimento", "chamado"],
-        "3.7 – Possibilidade de Subcontratação": ["subcontratação", "vedada", "admitida", "subcontratar"],
-        "3.8 – Modelo de Gestão e Fiscalização Contratual": ["fiscalização", "gestão contratual", "multa", "mora", "inexecução", "penalidade"],
-        "3.9 – Condições de Recebimento do Objeto": ["recebimento provisório", "recebimento definitivo", "condições de recebimento"],
-        "3.10 – Dos Preços": ["preços", "valor unitário", "custos", "encargos"],
-        "3.11 – Regras de Faturamento": ["faturamento", "nota fiscal", "periodicidade", "parcela"],
-        "3.13 – Reajustamento": ["reajustamento", "reajuste", "inpc", "índice", "correção"],
-        "3.14.1 – Vigência da ARP": ["ata de registro de preços", "arp", "vigência da ata"],
-        "3.14.2 – Definição de Vigência da Contratação": ["vigência da contratação", "vigência", "prazo de vigência", "data de início"],
-        "3.14.3 – Possibilidade de Prorrogação de Prazo de Vigência": ["prorrogação", "prazo de vigência", "admitida", "não admitida"],
-        "3.15.1 – Obrigações da Contratada — Gerais": ["obrigações da contratada", "contratada", "3.15.1"],
-        "3.15.2 – Obrigações da Contratada — Específicas": ["obrigações específicas", "3.15.2"],
-        "3.16.2 – Obrigações do Contratante — Específicas": ["obrigações do contratante", "contratante", "3.16.2"],
-        "3.17 – Necessidade de Garantia Contratual": ["garantia contratual", "seguro garantia", "caução", "3.17"],
-        "3.19 – Responsável pelo Preenchimento": ["responsável", "matrícula", "assinatura", "servidor", "unidade administrativa"],
-        "AP-I – Apenso I (Tabela de Itens)": ["apenso i", "tabela de itens", "catmat", "pdm", "especificação"],
-        "AP-II – Apenso II (Especificações Técnicas)": ["apenso ii", "especificações técnicas", "especificação técnica"],
     },
     _DOC_DFD: {
         "Objeto": ["objeto", "objeto da futura contratação", "descrição da demanda"],
@@ -397,7 +375,7 @@ Omita itens que não se aplicam."""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TR Serviços — análise abrangente de conformidade (Jan/2026)
+# TR Serviços — extração estrutural + avaliação qualitativa
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoItem]:
@@ -405,373 +383,179 @@ async def _analisar_tr_servicos(processo: ProcessoExtraido) -> list[ResultadoIte
     if not isinstance(tr, TRServicosExtraido) or not tr.texto_original:
         return []
 
-    # Contexto: DFD (se disponível, até 3000 chars) + TR completo
-    ctx_partes: list[str] = []
-    tem_dfd = bool(processo.dfd and processo.dfd.texto_original)
-    if tem_dfd:
-        ctx_partes.append(
-            "=== DOCUMENTO DE FORMALIZAÇÃO DA DEMANDA (DFD) ===\n"
-            + processo.dfd.texto_original[:3000]  # type: ignore[union-attr]
-        )
-    ctx_partes.append(
-        "=== TERMO DE REFERÊNCIA – SERVIÇOS ===\n"
-        + tr.texto_original
-    )
-    contexto = "\n\n".join(ctx_partes)
+    # ── Chamada 1: campos estruturais (checkboxes) não extraídos pela regex ──
+    estruturais: list[tuple[str, str]] = []  # (nome_item, instrucao)
 
-    regra_1_1_de = (
-        "(d) DFD fornecido: SIM. (e) verificar se o tópico '1. Objeto da Futura Contratação' "
-        "do DFD está em congruência com o objeto de 1.1 do TR (mesmo assunto/objeto)."
-        if tem_dfd else
-        "(d) DFD fornecido: NÃO — registrar 'DFD não fornecido' na observação e marcar conforme. "
-        "(e) não aplicável."
-    )
+    if not tr.objeto:
+        estruturais.append(("1.1 – Objeto", "Descrição do objeto — conforme se clara e específica"))
+    if not tr.fundamentacao:
+        estruturais.append(("Fundamentação", "Há justificativa substantiva da contratação? — conforme se presente e não é texto de modelo"))
+    if not tr.base_legal.artigo_inciso:
+        estruturais.append(("2.1.1 – Artigo/Inciso", "Artigo/inciso da Lei 14.133/2021 — conforme se 'art. 75, inciso II'"))
+    if not tr.divulgacao.opcao:
+        estruturais.append(("2.1.2 – Divulgação", "Opção A (não publicar) ou B (publicar no Portal MPBA)? — conforme se B, ou A com justificativa"))
+    if not tr.natureza_objeto:
+        estruturais.append(("1.3 – Natureza do Objeto", "Opção A (não continuado), B (parcelado) ou C (continuado)? — conforme se qualquer opção assinalada"))
+    if not tr.regime_execucao:
+        estruturais.append(("3.1 – Regime de Execução", "Opção A (preço global), B (preço unitário) ou C (outro)? — conforme se qualquer opção assinalada"))
+    if not tr.formalizacao_opcao:
+        estruturais.append(("1.6/1.7 – Formalização", "Opção A (NE/substitutivo), B (contrato formal), C ou D (ATA)? — conforme SOMENTE se A; B/C/D = INCONFORME"))
+    if not tr.responsavel_nome:
+        estruturais.append(("Responsável / Assinatura", "Nome e assinatura do responsável — conforme se presente"))
+    if not tr.prazo_execucao_dias:
+        estruturais.append(("3.4 – Prazo de Execução", "Prazo de execução dos serviços — conforme se preenchido"))
+    if not tr.garantia_opcao:
+        estruturais.append(("3.5 – Garantia do Serviço", "Opção A-E assinalada? — conforme se qualquer opção; C/D exige justificativa"))
+    if not tr.subcontratacao_opcao:
+        estruturais.append(("3.6 – Subcontratação", "Opção A (vedada) ou B (admitida)? — conforme se qualquer opção assinalada"))
+    if not tr.vigencia_opcao:
+        estruturais.append(("3.13 – Vigência da Contratação", "Opção A ou B assinalada? — conforme se qualquer opção"))
+    if not tr.garantia_contratual_opcao:
+        estruturais.append(("3.16 – Garantia Contratual", "Opção A (não exigida) ou B (exigida ≤ 5%)? — conforme se qualquer opção"))
+    estruturais.append((
+        "3.7.4 – Multas",
+        f"Percentuais de mora (%/dia) e inexecução total (%) — conforme se mora ≤ {_MORA_MAX}% E inexecução ≤ {_INEX_MAX}%; informe os valores na observação",
+    ))
 
-    _pre = (
-        "## PAPEL\n"
-        "Você é analista de conformidade documental especializado em contratações públicas regidas pela "
-        "Lei Federal nº 14.133/2021 e Lei Estadual/BA nº 14.634/2023, no âmbito do MPBA. "
-        "Verifique presença, completude e coerência formal dos campos do TR de SERVIÇOS. "
-        "Não emita juízo de mérito sobre adequação técnica ou suficiência jurídica.\n\n"
-        "## MARCADORES DE NÃO PREENCHIMENTO\n"
-        "Considere NÃO PREENCHIDO qualquer campo com: [inserir texto], [Inserir ...], [Indicar ...], "
-        "[Informar ...], [Especificar.], [justificar ...], [inserir prazo], [inserir endereço], "
-        "xxxx, xxx, xx, xx,xx, _____, ( ) sem marcação em campo de escolha, Ex.:, Ex.1:, Ex.2:, "
-        "(escolher UMA opção), (PREENCHER, CONFORME O CASO), (Se houver), E / OU residual, "
-        "INSERIR ASSINATURA DIGITAL, 202x não substituído, e-mail/telefone incompleto. "
-        "Considere 'marcada' apenas quando houver (X), (x), [X], ☑ ou marca equivalente. ( ) vazio = não marcada. "
-        "REGRA DE PREVALÊNCIA: quando um campo de escolha tiver opção inequivocamente marcada, "
-        "placeholders das opções NÃO marcadas do mesmo campo NÃO geram inconformidade.\n\n"
+    itens_estruturais = "\n".join(
+        f'{i+1}. "{nome}": {instr}'
+        for i, (nome, instr) in enumerate(estruturais)
     )
-    _sai = (
-        "\n## INSTRUÇÃO DE SAÍDA\n"
-        "Avalie CADA regra acima. Use 'pendencia': true para ambiguidades objetivas (ex.: duas opções onde "
-        "só cabe uma; incoerência entre subtópicos; campo condicional incompleto). "
-        "Responda APENAS com JSON válido, sem texto adicional:\n"
-        '{"avaliacoes":[{"item":"<ID exato – Título exato>","conforme":true,"pendencia":false,'
-        '"observacao":"<evidência literal curta ou descrição da falha, até 120 chars>"}]}\n'
-        "Inclua TODOS os itens avaliados (conformes e não conformes). "
-        "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
+    pergunta_est = (
+        "Analise o Termo de Referência de SERVIÇOS (MPBA Jan/2026) e para CADA item abaixo "
+        "indique se está conforme e uma observação em até 100 caracteres.\n\n"
+        + itens_estruturais
+        + "\n\nResponda APENAS com JSON (use EXATAMENTE os nomes entre aspas para 'item'):\n"
+        '{"avaliacoes":[{"item":"...","conforme":true,"observacao":"..."}]}'
     )
 
-    pergunta_1 = (
-        _pre
-        + "## REGRAS – PARTE 1 (seções 1 e 2: identificação, justificativa, habilitações)\n"
-        + f"1.1 – Indicação do Objeto: (a) prestação de serviços descrita concretamente, placeholder substituído; "
-        "(b) expressão 'através do Sistema de Registro de Preços' resolvida — mantida somente se 1.6 = C ou D, "
-        "excluída se 1.6 = A ou B; (c) remissão ao Apenso I atendida pela existência do Apenso I preenchido; "
-        f"{regra_1_1_de}\n"
-        "1.2 – Justificativa do Quantitativo Definido: indicação objetiva de como se chegou às quantidades "
-        "de serviços; 'Ex.:' removido.\n"
-        "1.3 – Natureza do Objeto: UMA opção marcada (A=prestação imediata/pontual/por escopo, B=parcelada, "
-        "C=serviços continuados); se C: UMA subopção marcada entre C.1, C.2, C.3 e C.4, E justificativa "
-        "para enquadramento como serviço continuado preenchida.\n"
-        "1.4 – Fundamentação da Contratação: motivação/necessidade da contratação descrita, "
-        "placeholder substituído.\n"
-        "1.5 – Descrição da Solução como um Todo: solução descrita integralmente; 'Ex.1:' e 'Ex.2:' removidos.\n"
-        "1.6 – Formalização da Contratação: UMA opção marcada (A=empenho/instrumento substitutivo, "
-        "B=instrumento formal de contrato, C=ARP e posteriores empenhos/instrumentos substitutivos, "
-        "D=ARP e posteriores instrumentos formais de contrato); se C ou D: unidade gerenciadora indicada, "
-        "abrangência territorial com UMA opção marcada (Salvador / Salvador e RMS / Outro indicado), "
-        "e possibilidade de adesão (SIM ou NÃO) marcada.\n"
-        "2.1 – Fundamentação Legal (Forma de Seleção): SOMENTE opção B (dispensa não eletrônica/tradicional) "
-        "é aceita — marcação de A ou ausência = NÃO CONFORME; NÃO avalie subcampos A.1 a A.6 em nenhuma hipótese; "
-        "inciso do art. 75 preenchido; se B: B.1 (justificativa para dispensa tradicional preenchida) e B.2 "
-        "(UMA opção — I=não divulgar com justificativa, ou II=divulgar com e-mail, telefone e prazo ≥ 3 dias úteis "
-        "preenchidos, expresso em dias úteis sem data certa).\n"
-        "2.2.1 – Habilitação Jurídica: ao menos UMA opção marcada (A=pessoa jurídica e/ou B=pessoa física).\n"
-        "2.2.2 – Habilitação Fiscal, Social e Trabalhista: disposições A, B, B.1, C, D, E mantidas "
-        "integralmente — texto invariável, não comporta exclusão.\n"
-        "2.2.3 – Habilitação Técnica: UMA opção marcada (A=não será exigida ou B=será exigida); se B: "
-        "cada bloco mantido está integralmente preenchido (DECLARAÇÃO com subitens b) a e) preenchidos — "
-        "local de visita, unidade responsável, telefone, e-mail, data-limite; ATESTADO/CERTIDÃO com critérios "
-        "preenchidos; REGISTRO/INSCRIÇÃO com tabela preenchida; PROVA de lei especial com tabela preenchida; "
-        "'Outro documento' art. 67 indicado e justificado); blocos não utilizados, conectores 'E / OU' "
-        "residuais e orientações excluídos.\n"
-        "2.2.4 – Habilitação Econômico-Financeira: ao menos UMA opção marcada (A=não exigida, B, C ou D); "
-        "se A marcada simultaneamente com B/C/D = PENDÊNCIA; se C: percentual preenchido e ≤ 10%; "
-        "se D: exigência indicada e justificada (art. 69).\n"
-        + _sai
+    # ── Chamada 2: aspectos qualitativos ──────────────────────────────────────
+    qualitativos: list[tuple[str, str]] = [
+        ("Objeto (IA)", "A descrição do objeto é específica e adequada ao tipo de serviço? (ignore completamente erros de formatação/OCR/digitação, NÃO aponte erros de OCR como inconformidade. NÃO analise especificações técnicas detalhadas, quantitativos por unidade ou parâmetros de qualidade exigidos - esses pontos são verificados em outras partes do documento como planilha de itens e especificações técnicas)"),
+        ("Coerência Geral (IA)", "O TR está internamente consistente (objeto, regime, prazos e garantias coerentes)? (ignore erros de formatação/OCR)"),
+    ]
+    if tr.divulgacao.opcao == "A":
+        qualitativos.append(("Divulgação – Justificativa (IA)", "A justificativa para não publicar no Portal MPBA é substantiva?"))
+    if tr.habilitacao.tecnica_opcao == "B":
+        qualitativos.append(("Habilitação Técnica (IA)", "Os requisitos técnicos exigidos são proporcionais e justificados?"))
+    if tr.natureza_objeto and tr.natureza_objeto.upper() == "C":
+        qualitativos.append(("Natureza Objeto – Justificativa (IA)", "A justificativa para serviço continuado (opção C) é adequada?"))
+
+    itens_qual = "\n".join(
+        f'{i+1}. "{nome}": {instr}'
+        for i, (nome, instr) in enumerate(qualitativos)
+    )
+    pergunta_qual = (
+        "Analise qualitativamente o Termo de Referência de SERVIÇOS (MPBA Jan/2026).\n\n"
+        + itens_qual
+        + "\n\nResponda APENAS com JSON:\n"
+        '{"avaliacoes":[{"item":"...","conforme":true,"observacao":"..."}]}'
     )
 
-    pergunta_2 = (
-        _pre
-        + "## REGRAS – PARTE 2 (seções 3 e apensos: execução, preços, vigência, obrigações)\n"
-        + "3.1 – Regime de Execução: UMA opção marcada (A=empreitada por preço global, "
-        "B=empreitada por preço unitário, C=outro com indicação preenchida).\n"
-        "3.2 – Prazo para Retirada da Nota de Empenho: em 3.2.1, prazo preenchido e alternativa "
-        "'[úteis ou corridos]' resolvida para uma única forma de contagem.\n"
-        "3.3 – Forma de Execução: (3.3.1) local(is) de execução com endereço completo e CEP; "
-        "(3.3.2) UMA opção (A=não se aplica ou B=sim; se B: unidade responsável e dias/horários preenchidos, "
-        "'Ex.:' removido, e 'Outras Regras' preenchidas ou com 'Não se aplica'); "
-        "(3.3.3) UMA opção sobre agendamento (A=não se aplica ou B=sim; se B: unidade, telefone, "
-        "e-mail preenchidos e antecedência mínima preenchida ou 'Não se aplica'); "
-        "(3.3.4) UMA opção (A=não se aplica ou B=aplica-se com texto preenchido).\n"
-        "3.4 – Prazo(s) de Execução: UMA opção marcada (A, B ou C); se A: A.1 tabela preenchida "
-        "(descrição, prazo e úteis/corridos marcado por linha), A.2 UMA opção (I=recebimento do empenho "
-        "ou II=outro com texto informado e 'Ex.:' removido), A.3 prazo total preenchido ou 'Não se aplica', "
-        "A.4 UMA opção sobre prorrogação (I=não ou II=sim); se B: regras textuais preenchidas; "
-        "se C: Apenso II existe e contém definições de prazo de execução.\n"
-        "3.5 – Regras de Garantia: (3.5.1) UMA opção marcada (A=não se aplica, B=garantia legal/CDC, "
-        "C=garantia contratada, D=híbrido, E=definições no Apenso II); se C: justificativa preenchida; "
-        "se D: justificativa e indicação dos itens com garantia legal e contratada preenchidas; "
-        "se E: Apenso II existente e preenchido; se C ou D, avaliar também: (3.5.2.1) UMA opção "
-        "(A=contratado ou B=fabricante com justificativa); (3.5.2.2) UMA opção (A=dias ou B=meses com "
-        "número, ou C=vigência contratual) com justificativa do prazo; (3.5.2.3) UMA opção "
-        "(A=horas ou B=dias com número e úteis/corridos, ou C=outro indicado); (3.5.2.4) UMA opção "
-        "(A=assistência em zona urbana/metropolitana de Salvador, B=município indicado, C=a critério da contratada, "
-        "D=on site com prazo em horas e justificativa, E=outra especificada); (3.5.2.5) UMA opção "
-        "(A=não se aplica ou B=aplica-se com texto preenchido).\n"
-        "3.6 – Possibilidade ou Não de Subcontratação: UMA opção marcada (A=vedada ou "
-        "B=admitida parcialmente); se B: parcela(s) subcontratável(eis) indicada(s) e condições preenchidas.\n"
-        "3.7 – Modelo de Gestão e Fiscalização Contratual: (3.7.1) disposições 3.7.1.1 a 3.7.1.6 mantidas — "
-        "texto invariável; (3.7.2) UMA opção (A=não se aplica ou B=disposições específicas preenchidas, "
-        "numeração iniciando em 3.7.2.1); (3.7.3) infrações e sanções mantidas — texto invariável; "
-        "(3.7.4) UMA opção (A=disposições padrão mantidas sem alteração: moratória 0,5%/dia, "
-        "compensatórias 20% e 30%, multa 10% — ou B=disposições específicas com 3.7.4.1 a 3.7.4.4 preenchidos, "
-        f"sem 'xxx', cada um entre {_MORA_MAX}% e {_INEX_MAX}% do valor global — se B com percentuais fora "
-        "desta faixa = PENDÊNCIA).\n"
-        "3.8 – Condições de Recebimento do Objeto: (3.8.1) prazo de recebimento provisório preenchido em dias "
-        "corridos (mín. 1 dia; 'Não se aplica' é vedado) e UMA opção de termo inicial marcada "
-        "(A=da finalização dos serviços, B=da entrega da fatura, C=outro indicado); "
-        "(3.8.2) prazo de recebimento definitivo preenchido em dias corridos; "
-        "(3.8.3) UMA opção (A=não se aplica ou B=prazo; se B: UMA subopção — B.1=horas ou B.2=dias com "
-        "número e úteis/corridos, ou B.3=outro indicado); (3.8.4) disposições 3.8.4.1 a 3.8.4.6 mantidas — "
-        "texto invariável.\n"
-        "3.9 – Dos Preços: (3.9.1) UMA opção (A=preços englobam todos os custos, com A.1 invariável mantido "
-        "e A.2 preenchido ou com 'Não se aplica'; ou B=itens/custos não inclusos com texto preenchido); "
-        "(3.9.2) UMA opção marcada (A=valor mensal fixo, B=valor unitário por serviços, "
-        "C=valor global contratado, D=outro indicado com 'Ex.:' removido).\n"
-        "3.10 – Regras de Faturamento: (3.10.1) UMA opção marcada (A=mensal, B=múltiplos faturamentos, "
-        "C=parcela única, D=parcelado, E=outro); se C: UMA subopção (C.1=ao final da execução ou "
-        "C.2=outro indicado); se D: UMA subopção preenchida (D.1=quantidade de parcelas ou D.2=montantes); "
-        "se E: indicação preenchida; (3.10.2) UMA opção (A=não se aplica ou B=regras/documentos preenchidos).\n"
-        "3.11 – Regras para Pagamento e Atualização Monetária: disposições 3.11.1 a 3.11.7.1 mantidas — "
-        "texto invariável, nenhum campo aberto.\n"
-        "3.12 – Reajustamento: UMA opção marcada (A=passível de reajustamento, B=não cabível na vigência "
-        "originária, C=não cabível); se A: índice oficial com UMA opção marcada (A.1=INPC/IBGE ou "
-        "A.2=outro indicado); se B: índice oficial com UMA opção marcada (B.1=INPC/IBGE ou B.2=outro); "
-        "se C: justificativa preenchida.\n"
-        "3.13.1 – Vigência da ARP: UMA opção marcada (A=não se aplica ou B=vigência da ARP); se B: prazo "
-        "≤ 12 meses preenchido e possibilidade de prorrogação com UMA opção (NÃO ou SIM, total ≤ 2 anos); "
-        "verificar coerência com 1.6 — se 1.6=C ou D deve ser B; se 1.6=A ou B deve ser A (incoerência = PENDÊNCIA).\n"
-        "3.13.3 – Possibilidade de Prorrogação de Prazo de Vigência: UMA opção marcada "
-        "(A=não será admitida ou B=admitida mediante aditivo com justificativa preenchida; 'Ex.1:' e 'Ex.2:' removidos).\n"
-        "3.14.1 – Obrigações da Contratada — Gerais: disposições 3.14.1.1 a 3.14.1.20 mantidas; "
-        "itens 3.14.1.3 e 3.14.1.5 devem conter prazo efetivamente preenchido (placeholder '[inserir prazo]' "
-        "substituído).\n"
-        "3.14.2 – Obrigações da Contratada — Específicas: UMA opção marcada (A=não existem ou "
-        "B=obrigações específicas indicadas).\n"
-        "3.15.2 – Obrigações do Contratante — Específicas: UMA opção marcada (A=não existem ou "
-        "B=específicas indicadas); NÃO classifique a numeração interna '3.16.1.x' como inconformidade — "
-        "é erro tipográfico do próprio modelo.\n"
-        "3.16 – Indicação sobre a Necessidade de Garantia Contratual: UMA opção marcada (A=não será exigida ou B=será exigida); "
-        "se B: B.1 com UMA opção (I=5% ou II=outro percentual >5% e ≤10% com justificativa); B.2 com prazo "
-        "de apresentação preenchido; B.3 com UMA opção de duração (I=mesma da contratação ou II=dias/meses "
-        "após a vigência com número preenchido).\n"
-        "3.17 – Informações Orçamentárias: remissão aos formulários de informações orçamentárias mantida — "
-        "texto invariável.\n"
-        "3.18 – Responsável pelo Preenchimento: matrícula, nome e unidade administrativa preenchidos; "
-        "identificar se há assinatura (em imagem ou digital) no campo correspondente.\n"
-        "AP-I – Apenso I (Tabela de Itens de Serviço): tabela preenchida (item, descrição do serviço, "
-        "unidade de medida, quantidade e código CATSER com descrição), sem 'xxxx'/'xx'; "
-        "a tabela complementar 'PARAMETRIZAÇÃO ENTRE OBJETO E CÓDIGO(S) CATSER' — exclusiva da dispensa "
-        "eletrônica — deve ter sido excluída (sua permanência = NÃO CONFORME).\n"
-        "AP-II – Apenso II (Especificações Técnicas Detalhadas): se houver especificações técnicas detalhadas, "
-        "texto preenchido; caso contrário, Apenso II deve ter sido excluído; se 3.4=C ou 3.5.1=E, "
-        "o Apenso II deve existir e estar preenchido (ausência = NÃO CONFORME).\n"
-        + _sai
+    # Contexto estrutural: cabeçalho + seções onde ficam checkboxes + rodapé (assinatura)
+    _SECS_EST = ["1.3", "1.6", "1.7", "2.1", "3.1", "3.4", "3.5", "3.6", "3.7", "3.13", "3.16"]
+    ctx_est  = _fatiar_secoes(tr.texto_original, _SECS_EST)
+    # Contexto qualitativo: apenas o cabeçalho (objeto + fundamentação)
+    ctx_qual = tr.texto_original[:4000]
+
+    r_est, r_qual = await asyncio.gather(
+        analisar(pergunta_est, ctx_est,  max_tokens=1400),
+        analisar(pergunta_qual, ctx_qual, max_tokens=800),
+        return_exceptions=True,
     )
 
-    r1, r2 = await asyncio.gather(
-        analisar(pergunta_1, contexto),
-        analisar(pergunta_2, contexto),
-    )
-    itens: list[ResultadoItem] = []
-    for r in (r1, r2):
-        if r:
-            itens.extend(_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", []))
-    return itens
+    resultados: list[ResultadoItem] = []
+    for r in (r_est, r_qual):
+        if isinstance(r, Exception) or not r:
+            continue
+        for av in r.get("avaliacoes", []):
+            resultados.append(_de_avaliacao(_DOC_TR, av))
+    return resultados
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# TR Aquisições — análise abrangente de conformidade (Jan/2026)
+# TR Aquisições — extração estrutural + avaliação qualitativa
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _de_avaliacao_aquisicao(av: dict) -> ResultadoItem:
-    nome = av.get("item", "Análise IA")
-    obs  = av.get("observacao", "")
-    if av.get("pendencia"):
-        return _ia(pendencia(_DOC_TR, nome, obs or "Verificar."))
-    if av.get("conforme"):
-        return _ia(ok(_DOC_TR, nome, obs or "Conforme."))
-    return _ia(inconforme(_DOC_TR, nome, obs or "Não conforme."))
-
 
 async def _analisar_tr_aquisicoes(processo: ProcessoExtraido) -> list[ResultadoItem]:
     tr = processo.tr
     if not isinstance(tr, TRAquisicoesExtraido) or not tr.texto_original:
         return []
 
-    # Contexto: DFD (se disponível, até 3000 chars) + TR completo
-    ctx_partes: list[str] = []
-    tem_dfd = bool(processo.dfd and processo.dfd.texto_original)
-    if tem_dfd:
-        ctx_partes.append(
-            "=== DOCUMENTO DE FORMALIZAÇÃO DA DEMANDA (DFD) ===\n"
-            + processo.dfd.texto_original[:3000]  # type: ignore[union-attr]
-        )
-    ctx_partes.append(
-        "=== TERMO DE REFERÊNCIA – AQUISIÇÕES ===\n"
-        + tr.texto_original
-    )
-    contexto = "\n\n".join(ctx_partes)
+    estruturais: list[tuple[str, str]] = []
 
-    regra_1_1_d = (
-        "(d) verificar coerência do objeto com o campo '1. Objeto da Futura Contratação' do DFD fornecido "
-        "(conforme = coerente)."
-        if tem_dfd else
-        "(d) DFD não fornecido — informar na observação e marcar conforme."
-    )
+    if not tr.objeto:
+        estruturais.append(("1.1 – Objeto", "Descrição do objeto — conforme se clara e específica"))
+    if not tr.fundamentacao:
+        estruturais.append(("Fundamentação", "Justificativa substantiva? — conforme se presente e não é texto de modelo"))
+    if not tr.base_legal.artigo_inciso:
+        estruturais.append(("2.1.1 – Artigo/Inciso", "Artigo/inciso Lei 14.133/2021 — conforme se 'art. 75, inciso II'"))
+    if not tr.divulgacao.opcao:
+        estruturais.append(("2.1.2 – Divulgação", "Opção A ou B? — conforme se B ou A com justificativa"))
+    if not tr.natureza_objeto:
+        estruturais.append(("1.4 – Natureza do Objeto", "Opção A (imediato), B (parcelado) ou C (continuado)? — conforme se assinalada"))
+    if not tr.formalizacao_opcao:
+        estruturais.append(("1.6/1.7 – Formalização", "Opção A (NE), B (contrato), C/D (ATA)? — conforme SOMENTE se A"))
+    if not tr.responsavel_nome:
+        estruturais.append(("Responsável / Assinatura", "Nome e assinatura — conforme se presente"))
+    if not tr.garantia_opcao:
+        estruturais.append(("3.6.1 – Garantia do Produto", "Opção A-E assinalada? — conforme se assinalada; C/D exige justificativa"))
+    if not tr.subcontratacao_opcao:
+        estruturais.append(("3.7 – Subcontratação", "Opção A (vedada) ou B (admitida)? — conforme se assinalada"))
+    if not tr.vigencia_opcao:
+        estruturais.append(("3.14 – Vigência da Contratação", "Opção A ou B? — conforme se assinalada"))
+    estruturais.append((
+        "3.9.4 – Multas",
+        f"Mora (%/dia) e inexecução total (%) — conforme se mora ≤ {_MORA_MAX}% E inexecução ≤ {_INEX_MAX}%; informe os valores",
+    ))
 
-    _pre = (
-        "## PAPEL\n"
-        "Você é analista de conformidade documental especializado em contratações públicas regidas pela "
-        "Lei Federal nº 14.133/2021 e Lei Estadual/BA nº 14.634/2023, no âmbito do MPBA. "
-        "Verifique presença, completude e coerência formal dos campos. "
-        "Não emita juízo de mérito sobre adequação técnica ou suficiência jurídica.\n\n"
-        "## MARCADORES DE NÃO PREENCHIMENTO\n"
-        "Considere NÃO PREENCHIDO qualquer campo com: [inserir texto], [Inserir ...], [Indicar ...], xxxx, "
-        "_____, ( ) sem marcação, Ex.:, (PREENCHER, CONFORME O CASO), INSERIR ASSINATURA DIGITAL, "
-        "202x não substituído, e-mail/telefone incompleto. "
-        "Considere 'marcada' apenas quando houver (X), (x), [X], ☑ ou marca equivalente no início da linha. "
-        "( ) vazio = não marcada. Se alguma opção estiver marcada, desconsidere placeholder residual.\n\n"
+    itens_estruturais = "\n".join(
+        f'{i+1}. "{nome}": {instr}'
+        for i, (nome, instr) in enumerate(estruturais)
     )
-    _sai = (
-        "\n## INSTRUÇÃO DE SAÍDA\n"
-        "Avalie CADA regra acima. Use 'pendencia': true para ambiguidades objetivas (ex.: dois campos "
-        "obrigatórios onde só cabe um, campo condicional incompleto). "
-        "Responda APENAS com JSON válido, sem texto adicional:\n"
-        '{"avaliacoes":[{"item":"<ID exato – Título exato>","conforme":true,"pendencia":false,'
-        '"observacao":"<evidência literal curta ou descrição da falha, até 120 chars>"}]}\n'
-        "Inclua TODOS os itens avaliados (conformes e não conformes). "
-        "Use os nomes de 'item' EXATAMENTE como escritos nas regras acima."
+    pergunta_est = (
+        "Analise o Termo de Referência de AQUISIÇÕES (MPBA Jan/2026) e para CADA item "
+        "indique se está conforme e uma observação em até 100 caracteres.\n\n"
+        + itens_estruturais
+        + "\n\nResponda APENAS com JSON (use EXATAMENTE os nomes entre aspas para 'item'):\n"
+        '{"avaliacoes":[{"item":"...","conforme":true,"observacao":"..."}]}'
     )
 
-    pergunta_1 = (
-        _pre
-        + "## REGRAS – PARTE 1 (seções 1 e 2: identificação, justificativa, habilitações)\n"
-        + f"1.1 – Indicação do Objeto: (a) objeto descrito concretamente; "
-        "(b) declaração de que NÃO é bem de luxo (Ato Normativo nº 004/2024) presente; "
-        "(c) remissão ao Apenso I presente; "
-        f"{regra_1_1_d}\n"
-        "1.2 – Indicação de Marca e/ou Modelo: exatamente UMA opção marcada (A=não se aplica, B=exclusiva, "
-        "C=referência/equivalente); se B ou C, justificativa e subitens com marca/modelo preenchidos.\n"
-        "1.3 – Justificativa do Quantitativo: indicação objetiva de como se chegou às quantidades; "
-        "'Ex.:' removido.\n"
-        "1.4 – Natureza do Objeto: UMA opção marcada (A=imediato, B=parcelado, C=continuado); "
-        "se C, justificativa da continuidade preenchida.\n"
-        "1.5 – Fundamentação da Contratação: motivação/necessidade descrita de forma substantiva "
-        "(não apenas texto de modelo).\n"
-        "1.6 – Descrição da Solução como um Todo: solução descrita integralmente; 'Ex.:' removido.\n"
-        "1.7 – Formalização da Contratação: UMA opção marcada (A, B, C ou D); se C ou D, unidade "
-        "gerenciadora, abrangência territorial (UMA opção) e adesão (SIM ou NÃO) preenchidos.\n"
-        "2.1 – Fundamentação Legal (Forma de Seleção): SOMENTE opção B (dispensa não eletrônica/tradicional) "
-        "é aceita — marcação de A ou ausência de marcação = NÃO CONFORME; inciso do art. 75 preenchido; "
-        "se B: B.1 preenchida, B.2 com opção I ou II (se II: e-mail, telefone e prazo ≥ 3 dias úteis preenchidos).\n"
-        "2.2.1 – Habilitação Jurídica: ao menos UMA opção marcada (A — pessoa jurídica e/ou B — pessoa física).\n"
-        "2.2.3 – Habilitação Técnica: UMA opção marcada (A=não exigida ou B=exigida); se B, requisitos "
-        "aplicáveis preenchidos e blocos não utilizados excluídos.\n"
-        "2.2.4 – Habilitação Econômico-Financeira: ao menos UMA opção marcada (A, B, C ou D); "
-        "se C, percentual ≤ 10%; se D, exigência indicada e justificada (art. 69).\n"
-        + _sai
+    qualitativos: list[tuple[str, str]] = [
+        ("Objeto (IA)", "A descrição do bem é específica e adequada? (ignore completamente erros de formatação/OCR/digitação, NÃO aponte erros de OCR como inconformidade. NÃO analise especificações técnicas detalhadas, quantitativos por unidade ou parâmetros de qualidade exigidos - esses pontos são verificados em outras partes do documento como planilha de itens e especificações técnicas)"),
+        ("Justificativa da Quantidade (IA)", "A quantidade está objetivamente justificada?"),
+        ("Coerência Geral (IA)", "O TR está internamente consistente? (ignore erros de formatação/OCR)"),
+    ]
+    if tr.marca_modelo_opcao and tr.marca_modelo_opcao.upper() in ("B", "C"):
+        qualitativos.append(("Marca/Modelo – Justificativa (IA)", "A justificativa para marca/modelo é técnica e não preferencial?"))
+    if tr.natureza_objeto and tr.natureza_objeto.upper() == "C":
+        qualitativos.append(("Natureza Objeto – Justificativa (IA)", "Justificativa para fornecimento continuado é adequada?"))
+
+    itens_qual = "\n".join(f'{i+1}. "{nome}": {instr}' for i, (nome, instr) in enumerate(qualitativos))
+    pergunta_qual = (
+        "Analise qualitativamente o TR de AQUISIÇÕES (MPBA Jan/2026).\n\n"
+        + itens_qual
+        + "\n\nResponda APENAS com JSON:\n"
+        '{"avaliacoes":[{"item":"...","conforme":true,"observacao":"..."}]}'
     )
 
-    pergunta_2 = (
-        _pre
-        + "## REGRAS – PARTE 2 (seções 3 e apensos: execução, entrega, garantia, vigência, obrigações)\n"
-        + "3.1 – Prazo para Retirada da Nota de Empenho: prazo preenchido e definido 'úteis' ou 'corridos'.\n"
-        "3.2 – Forma de Execução: (3.2.1) prazo de entrega preenchido e úteis/corridos definido; "
-        "(3.2.2) UMA opção (A=recebimento do empenho ou B=outro; se B, texto informado); "
-        "(3.2.3) UMA opção sobre prorrogação do prazo de entrega (NÃO ou SIM); "
-        "(3.2.4) local(is) de entrega com endereço completo e CEP; "
-        "(3.2.5) dias e horários de entrega informados, 'Ex.:' removido; "
-        "(3.2.6) UMA opção sobre necessidade de agendamento (NÃO ou SIM); "
-        "(3.2.7) setor responsável pelo agendamento/recepção indicado; "
-        "(3.2.8) telefone e e-mail de contato preenchidos; "
-        "(3.2.9) UMA opção (A=não se aplica ou B=aplica-se; se B, regras de embalagem preenchidas e 'Ex.' removidos); "
-        "(3.2.10) UMA opção (A=não se aplica ou B=aplica-se; se B, demais regras preenchidas).\n"
-        "3.3 – Regras sobre Montagem: UMA opção marcada (A=montados/sem montagem, B=desmontados, "
-        "C=montagem pelo fornecedor); se C: C.1 (prazo com UMA opção), C.2 (dias/horários) e C.3 "
-        "(local com UMA opção) preenchidos.\n"
-        "3.4 – Regras para Instalação: UMA opção marcada (A=sem instalação ou B=instalação pelo fornecedor); "
-        "se B: B.1 (prazo com UMA opção), B.2 (dias/horários) e B.3 (local com UMA opção) preenchidos.\n"
-        "3.5 – Prazo de Validade para Bens Perecíveis: UMA opção marcada (A=não se aplica, "
-        "B=validade da embalagem, C=com decurso máximo); se C, tabela de item/lote, prazo mínimo e "
-        "decurso máximo preenchida.\n"
-        "3.6 – Regras de Garantia: (3.6.1) UMA opção marcada (A a E); se C ou D: justificativa preenchida "
-        "e verificar 3.6.2.1 (UMA opção A=contratado ou B=fabricante; se B, justificativa), "
-        "3.6.2.2 (UMA opção A/B/C com justificativa do prazo), 3.6.2.3 (UMA opção com horas/dias e "
-        "úteis/corridos definidos), 3.6.2.4 (UMA opção A a E; se D, prazo e justificativa preenchidos); "
-        "(3.6.2.5) UMA opção (A=não se aplica ou B=aplica-se; se B, preenchido).\n"
-        "3.7 – Possibilidade de Subcontratação: UMA opção marcada (A=vedada ou B=admitida parcial); "
-        "se B: parcela subcontratável e regras/condições preenchidas.\n"
-        "3.8 – Modelo de Gestão e Fiscalização Contratual: (3.8.1) texto invariável mantido; "
-        "(3.8.2) UMA opção (A=não se aplica ou B=disposições específicas preenchidas); "
-        "(3.8.3) texto invariável mantido; "
-        "(3.8.4) UMA opção (A=percentuais padrão ou B=específicos); se B: confirmar que percentuais "
-        f"estão entre {_MORA_MAX}% e {_INEX_MAX}% (fora desta faixa = PENDÊNCIA) e que os 4 subitens "
-        "3.8.4.1 a 3.8.4.4 estão preenchidos.\n"
-        "3.9 – Condições de Recebimento do Objeto: (3.9.1) prazo de recebimento provisório preenchido "
-        "e UMA opção marcada (A=da entrega ou B=outro); (3.9.2) prazo de recebimento definitivo em dias "
-        "corridos preenchido; (3.9.3) UMA opção (A=não se aplica ou B=prazo; se B, horas/dias e "
-        "úteis/corridos definidos).\n"
-        "3.10 – Dos Preços: (3.10.1) UMA opção marcada (A=engloba todos os custos ou B=itens não inclusos) "
-        "e demais regramentos preenchidos ou 'Não se aplica'; (3.10.2) UMA opção marcada "
-        "(A=valor unitário ou B=outro).\n"
-        "3.11 – Regras de Faturamento: (3.11.1) UMA opção marcada (A a E); se D, quantidade e montantes "
-        "das parcelas preenchidos; se E, indicação preenchida; (3.11.2) UMA opção (A=não se aplica ou "
-        "B=regras/documentos preenchidos).\n"
-        "3.13 – Reajustamento: UMA opção marcada (A=passível, B=não cabível na vigência originária, "
-        "C=não cabível com justificativa); se A ou B: índice oficial com UMA opção marcada (INPC/IBGE ou "
-        "outro indicado); se C: justificativa preenchida.\n"
-        "3.14.1 – Vigência da ARP: UMA opção marcada (A=não se aplica ou B=vigência da ARP); "
-        "se A, CONFORME; se B: prazo de vigência (≤ 1 ano) preenchido e prorrogação com UMA opção "
-        "(NÃO ou SIM, limite total 2 anos) marcada.\n"
-        "3.14.2 – Definição de Vigência da Contratação: UMA opção (A=sem contrato ou B=com contrato) "
-        "e UMA subopção (A.1–A.4 ou B.1/B.2) com prazos/datas preenchidos; em A.3/A.4 e B com data "
-        "certa, a data deve ser posterior à previsão de empenho/assinatura e sem '202x'.\n"
-        "3.14.3 – Possibilidade de Prorrogação de Prazo de Vigência: UMA opção marcada "
-        "(A=não admitida ou B=admitida com justificativa preenchida).\n"
-        "3.15.1 – Obrigações da Contratada — Gerais: itens 3.15.1.3 e 3.15.1.5 devem conter algum "
-        "prazo preenchido.\n"
-        "3.15.2 – Obrigações da Contratada — Específicas: UMA opção marcada (A=não existem ou "
-        "B=específicas indicadas).\n"
-        "3.16.2 – Obrigações do Contratante — Específicas: UMA opção marcada (A=não existem ou "
-        "B=específicas indicadas).\n"
-        "3.17 – Necessidade de Garantia Contratual: UMA opção marcada (A=não exigida ou B=exigida); "
-        "se B: percentual com UMA opção (5% ou outro ≤ 10% com justificativa), prazo de apresentação "
-        "preenchido e B.3 com UMA opção de duração no seguro-garantia.\n"
-        "3.19 – Responsável pelo Preenchimento: matrícula, nome e unidade administrativa preenchidos; "
-        "identificar se há assinatura digital ou espaço para assinatura no documento.\n"
-        "AP-I – Apenso I (Tabela de Itens): tabela preenchida (item, descrição, unidade, quantidade, "
-        "PDM com descrição, CATMAT com descrição), sem xxxx/xx; se dispensa não eletrônica (opção B "
-        "em 2.1), tabela de parametrização CATMAT deve ter sido excluída.\n"
-        "AP-II – Apenso II (Especificações Técnicas): se houver especificações detalhadas, texto "
-        "preenchido; caso contrário, Apenso II deve ter sido excluído — se presente mas vazio, "
-        "NÃO CONFORME.\n"
-        + _sai
+    _SECS_EST = ["1.4", "1.6", "1.7", "2.1", "3.1", "3.6", "3.7", "3.9", "3.14"]
+    ctx_est  = _fatiar_secoes(tr.texto_original, _SECS_EST)
+    ctx_qual = tr.texto_original[:4000]
+
+    r_est, r_qual = await asyncio.gather(
+        analisar(pergunta_est, ctx_est,  max_tokens=1400),
+        analisar(pergunta_qual, ctx_qual, max_tokens=800),
+        return_exceptions=True,
     )
 
-    r1, r2 = await asyncio.gather(
-        analisar(pergunta_1, contexto),
-        analisar(pergunta_2, contexto),
-    )
-    itens: list[ResultadoItem] = []
-    for r in (r1, r2):
-        if r:
-            itens.extend(_de_avaliacao_aquisicao(av) for av in r.get("avaliacoes", []))
-    return itens
+    resultados: list[ResultadoItem] = []
+    for r in (r_est, r_qual):
+        if isinstance(r, Exception) or not r:
+            continue
+        for av in r.get("avaliacoes", []):
+            resultados.append(_de_avaliacao(_DOC_TR, av))
+    return resultados
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -858,74 +642,26 @@ Responda APENAS com JSON:
 # Itens determinísticos que a IA pode substituir quando resolvê-los.
 # A IA devolve o item com o MESMO nome → remove o determinístico correspondente.
 _ITENS_IA_SUBSTITUI = {
-    # TR Serviços – análise abrangente (Jan/2026)
-    "1.1 – Indicação do Objeto",
-    "1.2 – Justificativa do Quantitativo Definido",
+    # TR Serviços e Aquisições – campos estruturais (ex-PENDÊNCIA/INCONFORME)
+    "1.1 – Objeto",
+    "Fundamentação",
+    "2.1.1 – Artigo/Inciso",
+    "2.1.2 – Divulgação",
     "1.3 – Natureza do Objeto",
-    "1.4 – Fundamentação da Contratação",
-    "1.5 – Descrição da Solução como um Todo",
-    "1.6 – Formalização da Contratação",
-    "2.1 – Fundamentação Legal (Forma de Seleção)",
-    "2.2.1 – Habilitação Jurídica",
-    "2.2.2 – Habilitação Fiscal, Social e Trabalhista",
-    "2.2.3 – Habilitação Técnica",
-    "2.2.4 – Habilitação Econômico-Financeira",
-    "3.1 – Regime de Execução",
-    "3.2 – Prazo para Retirada da Nota de Empenho",
-    "3.3 – Forma de Execução",
-    "3.4 – Prazo(s) de Execução",
-    "3.5 – Regras de Garantia",
-    "3.6 – Possibilidade ou Não de Subcontratação",
-    "3.7 – Modelo de Gestão e Fiscalização Contratual",
-    "3.8 – Condições de Recebimento do Objeto",
-    "3.9 – Dos Preços",
-    "3.10 – Regras de Faturamento",
-    "3.11 – Regras para Pagamento e Atualização Monetária",
-    "3.12 – Reajustamento",
-    "3.13.1 – Vigência da ARP",
-    "3.13.3 – Possibilidade de Prorrogação de Prazo de Vigência",
-    "3.14.1 – Obrigações da Contratada — Gerais",
-    "3.14.2 – Obrigações da Contratada — Específicas",
-    "3.15.2 – Obrigações do Contratante — Específicas",
-    "3.16 – Indicação sobre a Necessidade de Garantia Contratual",
-    "3.17 – Informações Orçamentárias",
-    "3.18 – Responsável pelo Preenchimento",
-    "AP-I – Apenso I (Tabela de Itens de Serviço)",
-    "AP-II – Apenso II (Especificações Técnicas)",
-    # TR Aquisições – análise abrangente (Jan/2026)
-    "1.1 – Indicação do Objeto",
-    "1.2 – Indicação de Marca e/ou Modelo",
-    "1.3 – Justificativa do Quantitativo",
     "1.4 – Natureza do Objeto",
-    "1.5 – Fundamentação da Contratação",
-    "1.6 – Descrição da Solução como um Todo",
-    "1.7 – Formalização da Contratação",
-    "2.1 – Fundamentação Legal (Forma de Seleção)",
-    "2.2.1 – Habilitação Jurídica",
-    "2.2.3 – Habilitação Técnica",
-    "2.2.4 – Habilitação Econômico-Financeira",
-    "3.1 – Prazo para Retirada da Nota de Empenho",
-    "3.2 – Forma de Execução",
-    "3.3 – Regras sobre Montagem",
-    "3.4 – Regras para Instalação",
-    "3.5 – Prazo de Validade para Bens Perecíveis",
-    "3.6 – Regras de Garantia",
-    "3.7 – Possibilidade de Subcontratação",
-    "3.8 – Modelo de Gestão e Fiscalização Contratual",
-    "3.9 – Condições de Recebimento do Objeto",
-    "3.10 – Dos Preços",
-    "3.11 – Regras de Faturamento",
-    "3.13 – Reajustamento",
-    "3.14.1 – Vigência da ARP",
-    "3.14.2 – Definição de Vigência da Contratação",
-    "3.14.3 – Possibilidade de Prorrogação de Prazo de Vigência",
-    "3.15.1 – Obrigações da Contratada — Gerais",
-    "3.15.2 – Obrigações da Contratada — Específicas",
-    "3.16.2 – Obrigações do Contratante — Específicas",
-    "3.17 – Necessidade de Garantia Contratual",
-    "3.19 – Responsável pelo Preenchimento",
-    "AP-I – Apenso I (Tabela de Itens)",
-    "AP-II – Apenso II (Especificações Técnicas)",
+    "3.1 – Regime de Execução",
+    "1.6/1.7 – Formalização",
+    "Responsável / Assinatura",
+    "3.4 – Prazo de Execução",
+    "3.5 – Garantia do Serviço",
+    "3.6 – Subcontratação",
+    "3.7 – Subcontratação",
+    "3.6.1 – Garantia do Produto",
+    "3.13 – Vigência da Contratação",
+    "3.14 – Vigência da Contratação",
+    "3.16 – Garantia Contratual",
+    "3.7.4 – Multas",
+    "3.9.4 – Multas",
     # DFD
     "Objeto",
 }

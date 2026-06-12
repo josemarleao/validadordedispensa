@@ -52,23 +52,23 @@ def _get_kilo_model() -> str:
 async def analisar(
     pergunta: str,
     contexto: str,
-    max_tokens: Optional[int] = None,
+    max_tokens: int = 512,
 ) -> Optional[dict[str, Any]]:
     """Envia prompt ao Kilo AI e retorna JSON parseado, ou None se IA desabilitada/falhar."""
     import asyncio
     from config import settings
 
-    log.info("analisar() chamado - ia_enabled=%s, kilo_api_key_present=%s",
+    log.info("analisar() chamado - ia_enabled=%s, kilo_api_key_present=%s", 
              settings.ia_enabled, bool(settings.kilo_api_key))
-
+    
     if not settings.ia_enabled:
         log.warning("IA desabilitada, retornando None")
         return None
-
+    
     if not settings.kilo_api_key:
         log.warning("Kilo AI habilitado mas API key não configurada, retornando None")
         return None
-
+    
     log.info("Chamando _analisar_kilo com contexto de %d chars", len(contexto))
     resultado = await _analisar_kilo(pergunta, contexto, max_tokens)
     log.info("analisar() retornou: %s", "sucesso" if resultado else "None")
@@ -78,7 +78,7 @@ async def analisar(
 async def _analisar_kilo(
     pergunta: str,
     contexto: str,
-    max_tokens: Optional[int] = None,
+    max_tokens: int = 512,
 ) -> Optional[dict[str, Any]]:
     """Envia prompt ao Kilo AI e retorna JSON parseado."""
     import asyncio
@@ -118,19 +118,17 @@ async def _analisar_kilo(
             
             # Usa asyncio para rodar chamada síncrona do OpenAI em thread separada
             loop = asyncio.get_event_loop()
-            kwargs: dict = {
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": _SISTEMA},
-                    {"role": "user", "content": f"{pergunta}\n\nTEXTO:\n{contexto_usado}"},
-                ],
-                "temperature": 0.1,
-            }
-            if max_tokens is not None:
-                kwargs["max_tokens"] = max_tokens
             resp = await loop.run_in_executor(
                 None,
-                lambda: client.chat.completions.create(**kwargs)
+                lambda: client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": _SISTEMA},
+                        {"role": "user", "content": f"{pergunta}\n\nTEXTO:\n{contexto_usado}"}
+                    ],
+                    max_tokens=max_tokens,
+                    temperature=0.1,
+                )
             )
             
             txt = resp.choices[0].message.content or ""
