@@ -12,7 +12,7 @@ from schemas.responses import (
     Providencia,
 )
 from .dfd_rules        import aplicar_regras_dfd
-from .tr_rules         import aplicar_regras_tr
+
 from .precos_rules     import aplicar_regras_precos
 from .orcamentos_rules import aplicar_regras_orcamentos
 from .certidoes_rules  import aplicar_regras_certidoes, aplicar_regras_empresa
@@ -25,7 +25,7 @@ def _coletar_deterministicos(processo: ProcessoExtraido) -> list[ResultadoItem]:
     """Executa todas as regras determinísticas e retorna a lista bruta."""
     todos: list[ResultadoItem] = []
     todos += aplicar_regras_dfd(processo)
-    todos += aplicar_regras_tr(processo)
+
     todos += aplicar_regras_precos(processo)
     todos += aplicar_regras_orcamentos(processo)
     todos += aplicar_regras_certidoes(processo)
@@ -40,7 +40,7 @@ async def _coletar_deterministicos_parallel(processo: ProcessoExtraido) -> list[
     
     tasks = [
         asyncio.to_thread(aplicar_regras_dfd, processo),
-        asyncio.to_thread(aplicar_regras_tr, processo),
+
         asyncio.to_thread(aplicar_regras_precos, processo),
         asyncio.to_thread(aplicar_regras_orcamentos, processo),
         asyncio.to_thread(aplicar_regras_certidoes, processo),
