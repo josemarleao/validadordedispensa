@@ -360,17 +360,13 @@ async def test_ia():
     resultado = {
         "ia_enabled": settings.ia_enabled,
         "ia_model": settings.ia_model,
-        "openrouter_api_key_present": bool(settings.openrouter_api_key),
+        "kilo_api_key_present": bool(settings.kilo_api_key),
         "test_result": None,
         "test_error": None,
     }
-    
-    if not settings.ia_enabled:
-        resultado["test_error"] = "IA não está habilitada (ia_enabled=false)"
-        return resultado
-    
-    if not settings.openrouter_api_key:
-        resultado["test_error"] = "API key do OpenRouter não configurada"
+
+    if not settings.kilo_api_key:
+        resultado["test_error"] = "API key do Kilo AI não configurada"
         return resultado
     
     try:
