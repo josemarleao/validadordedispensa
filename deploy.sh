@@ -29,16 +29,16 @@ az containerapp update \
   --output none
 echo "✅ Deploy concluído (revisão com imagem $IMAGE)"
 
-# Configurar variáveis de ambiente da IA (só executa se OPENROUTER_API_KEY estiver definida no shell)
-if [ -n "$OPENROUTER_API_KEY" ]; then
+# Configurar variáveis de ambiente da IA (só executa se KILO_API_KEY estiver definida no shell)
+if [ -n "$KILO_API_KEY" ]; then
   echo ""
   echo "🤖 Configurando variáveis de IA no container..."
-  IA_MODEL_VALUE="${IA_MODEL:-openrouter/free}"
+  IA_MODEL_VALUE="${IA_MODEL:-kilo-auto/free}"
   az containerapp update \
     --name "$APP_NAME" \
     --resource-group "$RESOURCE_GROUP" \
     --set-env-vars \
-      OPENROUTER_API_KEY="$OPENROUTER_API_KEY" \
+      KILO_API_KEY="$KILO_API_KEY" \
       IA_ENABLED="true" \
       IA_MODEL="$IA_MODEL_VALUE" \
     --output none
