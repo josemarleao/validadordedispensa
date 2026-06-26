@@ -1,57 +1,24 @@
-"""Endpoint principal: POST /saneamento/processo"""
+"""Endpoint principal: POST /saneamento/processo
+
+A extração de texto, identificação de documentos, prompts e análise por IA
+acontecem inteiramente no fluxo do Power Automate. Esta API só valida o
+upload, reenvia o PDF para o fluxo e devolve a resposta dele ao cliente.
+"""
 
 from __future__ import annotations
 import asyncio
 import json
 import logging
+import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from config import settings
-from pdf.extractor import extrair_paginas
-from pdf.classifier import segmentar_pdf, absorver_desconhecidos
-from pdf.ai_classifier import reclassificar_desconhecidos_com_ia
-from domain.processo import montar_processo
-from rules.saneamento_engine import executar_saneamento_async
-from reports.report_builder import construir_resposta
 from schemas.responses import RespostaProcessamento
-from optimizations.parallel_processor import (
-    process_pages_parallel, 
-    merge_segment_results, 
-    get_processing_stats
-)
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/saneamento", tags=["Saneamento DL"])
 
 _MAX_BYTES = settings.max_pdf_size_mb * 1_048_576
-
-
-async def reclassificar_desconhecidos_com_ia_parallel(segmentos, batch_size=10):
-    """Reclassifica desconhecidos em batches paralelos."""
-    desconhecidos = [s for s in segmentos if s.tipo == "DESCONHECIDO"]
-    if not desconhecidos:
-        return segmentos
-    
-    # Divide em batches de 10 segmentos
-    tasks = []
-    for i in range(0, len(desconhecidos), batch_size):
-        batch = desconhecidos[i:i + batch_size]
-        tasks.append(reclassificar_desconhecidos_com_ia(batch))
-    
-    # Processa batches em paralelo
-    results = await asyncio.gather(*tasks)
-    
-    # Substitui desconhecidos pelos resultados
-    novos_segmentos = []
-    desconhecido_idx = 0
-    for seg in segmentos:
-        if seg.tipo != "DESCONHECIDO":
-            novos_segmentos.append(seg)
-        else:
-            novos_segmentos.append(results[0][desconhecido_idx])
-            desconhecido_idx += 1
-    
-    return novos_segmentos
 
 
 def _validar_pdf(filename: str | None, pdf_bytes: bytes) -> None:
@@ -82,6 +49,25 @@ def _normalizar_processo_sei(processo_sei: str) -> str:
     return numero
 
 
+async def _enviar_para_power_automate(
+    pdf_bytes: bytes,
+    filename: str,
+    processo_sei: str,
+    unidade_demandante: str,
+) -> dict:
+    """Envia o PDF ao fluxo do Power Automate e retorna o JSON de resposta (RespostaProcessamento)."""
+    if not settings.power_automate_processo_url:
+        raise RuntimeError("Fluxo de processamento (Power Automate) não configurado.")
+
+    files = {"file": (filename, pdf_bytes, "application/pdf")}
+    data = {"processo_sei": processo_sei, "unidade_demandante": unidade_demandante}
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(settings.power_automate_processo_url, files=files, data=data)
+    resp.raise_for_status()
+    return resp.json()
+
+
 @router.post(
     "/processo",
     response_model=RespostaProcessamento,
@@ -105,54 +91,13 @@ async def sanear_processo(
     )
 
     try:
-        # Extrair páginas (mantido como sequencial por enquanto)
-        paginas = await asyncio.to_thread(
-            extrair_paginas, pdf_bytes, settings.ocr_enabled
-        )
-        if not paginas:
-            raise HTTPException(
-                status_code=422,
-                detail="Nenhuma página pôde ser extraída do PDF. Verifique se o arquivo não está corrompido.",
-            )
-        if not any(p.tem_texto for p in paginas):
-            raise HTTPException(
-                status_code=422,
-                detail="O PDF não contém texto legível e o OCR não está disponível ou falhou.",
-            )
-
-        # Processamento paralelo das páginas
-        log.info(f"Iniciando processamento paralelo de {len(paginas)} páginas")
-        page_results = await asyncio.to_thread(
-            process_pages_parallel, paginas, settings.ocr_enabled, max_workers=8
-        )
-        
-        # Obter estatísticas do processamento
-        stats = get_processing_stats(page_results)
-        log.info(f"Estatísticas do processamento: {stats}")
-        
-        # Mesclar resultados das segmentações
-        todos_segmentos = merge_segment_results(page_results)
-        
-        # Classificação com IA (paralelo por batches)
-        todos_segmentos = await reclassificar_desconhecidos_com_ia_parallel(todos_segmentos, batch_size=20)
-        todos_segmentos = absorver_desconhecidos(todos_segmentos)
-        segmentos = [s for s in todos_segmentos if s.tipo != "DESCONHECIDO"]
-        
-        # Montar processo final
-        processo  = await asyncio.to_thread(montar_processo, segmentos, processo_sei, unidade_demandante, len(paginas))
-        processo.ocr_utilizado = any(r.via_ocr for r in page_results)
-        
-        # Adicionar estatísticas ao processo para monitoramento
-        processo.processing_stats = stats
-
-        relatorio = await executar_saneamento_async(processo)
-        resposta  = await asyncio.to_thread(construir_resposta, processo, relatorio)
-        return resposta
-
-    except HTTPException:
-        raise
+        resultado = await _enviar_para_power_automate(pdf_bytes, file.filename, processo_sei, unidade_demandante)
+        return RespostaProcessamento.model_validate(resultado)
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except httpx.HTTPError as exc:
+        log.exception("Erro ao comunicar com o fluxo Power Automate para o processo %s", processo_sei)
+        raise HTTPException(status_code=502, detail="Erro ao processar o documento no fluxo externo.") from exc
     except Exception as exc:
         log.exception("Erro inesperado no processamento do processo %s", processo_sei)
         raise HTTPException(
@@ -167,6 +112,7 @@ async def sanear_processo(
 )
 async def sanear_processo_stream_options():
     return {"status": "ok"}
+
 
 @router.post(
     "/processo/stream",
@@ -193,7 +139,7 @@ async def sanear_processo_stream(
             return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
         # Comentário SSE padrão — mantém a conexão viva sem disparar eventos no cliente.
-        # Enviado a cada _KA_INTERVAL segundos enquanto aguarda operações longas.
+        # Enviado a cada _KA_INTERVAL segundos enquanto aguarda o fluxo do Power Automate.
         _KA = ": keepalive\n\n"
         _KA_INTERVAL = 8.0  # segundos
 
@@ -214,86 +160,27 @@ async def sanear_processo_stream(
             yield task.result()  # último item = resultado real
 
         try:
-            # ── Extração ──────────────────────────────────────────────────────
-            yield _sse("progresso", {"etapa": "extracao", "mensagem": "Extraindo texto do PDF…"})
+            yield _sse("progresso", {
+                "etapa": "processamento",
+                "mensagem": "Documento enviado para análise…",
+            })
 
-            paginas = None
+            resultado_dict = None
             async for chunk in _aguardar(
-                asyncio.to_thread(extrair_paginas, pdf_bytes, settings.ocr_enabled)
+                _enviar_para_power_automate(pdf_bytes, file.filename, processo_sei, unidade_demandante)
             ):
                 if isinstance(chunk, str):
                     yield chunk
                 else:
-                    paginas = chunk
+                    resultado_dict = chunk
 
-            if not paginas or not any(p.tem_texto for p in paginas):
-                yield _sse("erro", {"detail": "PDF sem texto legível ou corrompido."})
-                return
-
-            n_ocr = sum(1 for p in paginas if p.via_ocr)
-            msg_ocr = f" ({n_ocr} via OCR)" if n_ocr else ""
-            yield _sse("progresso", {
-                "etapa": "classificacao",
-                "mensagem": f"{len(paginas)} página(s) extraída(s){msg_ocr}. Classificando documentos…",
-            })
-
-            # ── Classificação determinística (CPU-bound, rápida) ──────────────
-            todos_segmentos = await asyncio.to_thread(segmentar_pdf, paginas)
-
-            # ── Reclassificação por IA (I/O-bound, pode ser lenta) ────────────
-            n_desconhecidos = sum(1 for s in todos_segmentos if s.tipo == "DESCONHECIDO")
-            if n_desconhecidos:
-                yield _sse("progresso", {
-                    "etapa": "classificacao_ia",
-                    "mensagem": f"{n_desconhecidos} bloco(s) não identificado(s) — acionando IA…",
-                })
-                todos_segmentos_novo = None
-                async for chunk in _aguardar(reclassificar_desconhecidos_com_ia(todos_segmentos)):
-                    if isinstance(chunk, str):
-                        yield chunk
-                    else:
-                        todos_segmentos_novo = chunk
-                todos_segmentos = todos_segmentos_novo
-
-            todos_segmentos = absorver_desconhecidos(todos_segmentos)
-            segmentos = [s for s in todos_segmentos if s.tipo != "DESCONHECIDO"]
-            tipos = [s.tipo for s in segmentos]
-            yield _sse("progresso", {
-                "etapa": "extracao_dados",
-                "mensagem": f"{len(segmentos)} documento(s) identificado(s): {', '.join(tipos)}. Extraindo dados…",
-            })
-
-            # ── Montagem do processo (CPU-bound, rápida) ──────────────────────
-            processo = await asyncio.to_thread(
-                montar_processo, segmentos, processo_sei, unidade_demandante, len(paginas)
-            )
-            processo.ocr_utilizado = any(p.via_ocr for p in paginas)
-
-            # ── Saneamento + IA (I/O-bound, pode ser lenta) ───────────────────
-            msg_ia = " + análise por IA" if settings.ia_enabled else ""
-            yield _sse("progresso", {
-                "etapa": "saneamento",
-                "mensagem": f"Aplicando regras normativas{msg_ia}…",
-            })
-
-            relatorio = None
-            async for chunk in _aguardar(executar_saneamento_async(processo)):
-                if isinstance(chunk, str):
-                    yield chunk
-                else:
-                    relatorio = chunk
-
-            resposta = await asyncio.to_thread(construir_resposta, processo, relatorio)
-            
-            # Debug: log response structure
-            log.info(f"Enviando resultado - Processo: {processo.numero_sei}, "
-                    f"Relatório tem {len(relatorio.inconformidades)} inconformes, "
-                    f"{len(relatorio.pendencias)} pendências, "
-                    f"{len(relatorio.documentos_conformes)} conformes")
-            
+            resposta = RespostaProcessamento.model_validate(resultado_dict)
             yield _sse("resultado", resposta.model_dump(mode="json"))
             log.info("Resultado enviado via SSE")
 
+        except RuntimeError as exc:
+            log.error("Fluxo Power Automate não configurado: %s", exc)
+            yield _sse("erro", {"detail": str(exc)})
         except Exception:
             log.exception("Erro no stream do processo %s", processo_sei)
             yield _sse(
@@ -311,77 +198,10 @@ async def sanear_processo_stream(
     )
 
 
-
 @router.get("/health", summary="Verificação de disponibilidade")
 async def health():
-    """Verifica se a IA está configurada e faz um teste simples."""
-    from config import settings
-    from ai.analyzer import analisar
-    
-    resultado = {
+    return {
         "status": "ok",
         "servico": "Saneamento DL – MPBA",
-        "azure_storage": settings.azure_storage_enabled,
-        "ocr_enabled": settings.ocr_enabled,
-        "ia_enabled": settings.ia_enabled,
-        "ia_configured": bool(settings.kilo_api_key),
-        "ia_model": settings.ia_model if settings.ia_enabled else None,
-        "ia_test": None,
-        "ia_test_error": None,
+        "power_automate_configurado": bool(settings.power_automate_processo_url),
     }
-    
-    # Teste rápido da IA se estiver configurada
-    if settings.ia_enabled and settings.kilo_api_key:
-        try:
-            resposta = await analisar(
-                "Responda APENAS com JSON: {\"status\": \"ok\"}",
-                "Teste rápido",
-                max_tokens=50
-            )
-            if resposta:
-                resultado["ia_test"] = "sucesso"
-                resultado["ia_test_result"] = resposta
-            else:
-                resultado["ia_test"] = "falhou - IA retornou None"
-        except Exception as exc:
-            resultado["ia_test"] = "erro"
-            resultado["ia_test_error"] = str(exc)
-            resultado["ia_test_error_type"] = type(exc).__name__
-    
-    return resultado
-
-
-@router.get("/test-ia", summary="Testa se a IA está funcionando")
-async def test_ia():
-    """Testa a configuração da IA e faz uma chamada simples."""
-    from config import settings
-    from ai.analyzer import analisar
-    
-    resultado = {
-        "ia_enabled": settings.ia_enabled,
-        "ia_model": settings.ia_model,
-        "kilo_api_key_present": bool(settings.kilo_api_key),
-        "test_result": None,
-        "test_error": None,
-    }
-
-    if not settings.kilo_api_key:
-        resultado["test_error"] = "API key do Kilo AI não configurada"
-        return resultado
-    
-    try:
-        # Teste simples: pergunta à IA para responder com JSON
-        resposta = await analisar(
-            "Responda APENAS com JSON: {\"status\": \"ok\", \"mensagem\": \"IA funcionando\"}",
-            "Teste de conexão",
-            max_tokens=100
-        )
-        resultado["test_result"] = resposta
-        if resposta:
-            resultado["status"] = "sucesso"
-        else:
-            resultado["test_error"] = "IA retornou None (possível erro na chamada)"
-    except Exception as exc:
-        resultado["test_error"] = f"Erro ao chamar IA: {str(exc)}"
-    
-    return resultado

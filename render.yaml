@@ -7,15 +7,7 @@ services:
     envVars:
       - key: LOG_LEVEL
         value: INFO
-      - key: OCR_ENABLED
-        value: "true"
       - key: MAX_PDF_SIZE_MB
         value: "50"
-      - key: IA_ENABLED
-        value: "true"
-      - key: KILO_API_KEY
+      - key: POWER_AUTOMATE_PROCESSO_URL
         sync: false
-      - key: KILO_BASE_URL
-        value: https://api.kilo.ai/api/gateway
-      - key: IA_MODEL
-        value: openrouter/free

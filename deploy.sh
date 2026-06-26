@@ -29,20 +29,17 @@ az containerapp update \
   --output none
 echo "✅ Deploy concluído (revisão com imagem $IMAGE)"
 
-# Configurar variáveis de ambiente da IA (só executa se KILO_API_KEY estiver definida no shell)
-if [ -n "$KILO_API_KEY" ]; then
+# Configurar variável do fluxo de processamento (só executa se POWER_AUTOMATE_PROCESSO_URL estiver definida no shell)
+if [ -n "$POWER_AUTOMATE_PROCESSO_URL" ]; then
   echo ""
-  echo "🤖 Configurando variáveis de IA no container..."
-  IA_MODEL_VALUE="${IA_MODEL:-kilo-auto/free}"
+  echo "🤖 Configurando fluxo Power Automate no container..."
   az containerapp update \
     --name "$APP_NAME" \
     --resource-group "$RESOURCE_GROUP" \
     --set-env-vars \
-      KILO_API_KEY="$KILO_API_KEY" \
-      IA_ENABLED="true" \
-      IA_MODEL="$IA_MODEL_VALUE" \
+      POWER_AUTOMATE_PROCESSO_URL="$POWER_AUTOMATE_PROCESSO_URL" \
     --output none
-  echo "✅ IA habilitada (modelo: $IA_MODEL_VALUE)"
+  echo "✅ Fluxo Power Automate configurado"
 fi
 
 echo ""
