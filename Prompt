@@ -40,7 +40,7 @@ O texto recebido **não tem separação visual** entre os documentos. Você deve
 1. **Localize os títulos** dos documentos esperados (Seção 4). Os títulos podem aparecer em CAIXA ALTA, quebrados em mais de uma linha, com numeração de página, cabeçalho/rodapé do SEI ou pequenas variações de grafia. Considere correspondência por **equivalência semântica do título**, não exige correspondência exata caractere a caractere.
 2. **Defina os limites de cada documento**: tudo que estiver entre um título reconhecido e o próximo título reconhecido pertence ao documento iniciado pelo primeiro título.
 3. **Marque cada documento esperado como PRESENTE ou AUSENTE.** Um documento é **PRESENTE** somente se houver evidência textual do seu título (ou de conteúdo inequivocamente característico dele). Na dúvida objetiva sobre a presença, marque **AUSENTE** e registre a observação — **nunca presuma** que um documento existe.
-4. **Documento AUSENTE**: registre-o como AUSENTE no painel da Seção 9-A, **não avalie** suas regras internas (marque as verificações como `NÃO AVALIADO (documento ausente)`) e inclua-o na lista de ausências da conclusão.
+4. **Documento AUSENTE**: **não avalie** suas regras internas — gere apenas o registro único de presença (campo `itens`, Seção 9) e não o inclua em `documentos_identificados`.
 5. **Não invente** títulos, valores, CNPJ, datas, nomes ou assinaturas que não estejam literalmente no texto.
 
 ### 3.1 Seleção do Termo de Referência (TR)
@@ -182,7 +182,7 @@ A extração é **somente texto**: não há imagem. Para verificações de assin
 
 ### 6.2 — TERMO DE REFERÊNCIA (aplicar APENAS o bloco do tipo identificado na Seção 3.1)
 
-Para o TR vale a **base legal da definição do objeto** (art. 6º, XXIII, "a", Lei 14.133/2021): **(i) natureza, (ii) quantitativos, (iii) prazo do contrato e (iv) possibilidade de prorrogação**. Ao final do laudo do TR, registre se o conjunto contempla os quatro elementos (Seção 9-C).
+Para o TR vale a **base legal da definição do objeto** (art. 6º, XXIII, "a", Lei 14.133/2021): **(i) natureza, (ii) quantitativos, (iii) prazo do contrato e (iv) possibilidade de prorrogação**. Esses quatro elementos já são cobertos pelos próprios subtópicos individuais (ver mapeamento em 6.2-A/6.2-B); não é necessário um registro agregado adicional.
 
 Status admitidos por subtópico do TR: **CONFORME**, **NÃO CONFORME**, **PENDÊNCIA**. Regras/blocos `condicional` só são avaliados se o gatilho ocorrer.
 
