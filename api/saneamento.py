@@ -13,12 +13,32 @@ import httpx
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from config import settings
-from schemas.responses import RespostaProcessamento
+from schemas.responses import (
+    Encaminhamento,
+    Providencia,
+    RelatorioSaneamento,
+    ResultadoItem,
+    RespostaProcessamento,
+    ResumoContagens,
+    StatusRegra,
+)
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/saneamento", tags=["Saneamento DL"])
 
 _MAX_BYTES = settings.max_pdf_size_mb * 1_048_576
+
+_STATUS_MAP = {
+    "CONFORME": StatusRegra.CONFORME,
+    "NÃO CONFORME": StatusRegra.INCONFORME,
+    "PENDÊNCIA": StatusRegra.PENDENCIA,
+}
+
+_PROVIDENCIA_MAP = {
+    "Prosseguir": Providencia.PROSSEGUIR,
+    "Corrigir": Providencia.CORRIGIR,
+    "Submeter à SGA": Providencia.SGA,
+}
 
 
 def _validar_pdf(filename: str | None, pdf_bytes: bytes) -> None:
@@ -55,7 +75,7 @@ async def _enviar_para_power_automate(
     processo_sei: str,
     unidade_demandante: str,
 ) -> dict:
-    """Envia o PDF ao fluxo do Power Automate e retorna o JSON de resposta (RespostaProcessamento)."""
+    """Envia o PDF ao fluxo do Power Automate e retorna o JSON de análise (ver Prompt, Seção 9)."""
     if not settings.power_automate_processo_url:
         raise RuntimeError("Fluxo de processamento (Power Automate) não configurado.")
 
@@ -66,6 +86,65 @@ async def _enviar_para_power_automate(
         resp = await client.post(settings.power_automate_processo_url, files=files, data=data)
     resp.raise_for_status()
     return resp.json()
+
+
+def _montar_resposta(bruto: dict, processo_sei: str) -> RespostaProcessamento:
+    """Converte o JSON de análise da IA (Prompt, Seção 9) em RespostaProcessamento."""
+    todos: list[ResultadoItem] = []
+    for it in bruto.get("itens", []):
+        status_regra = _STATUS_MAP.get(it.get("status"))
+        if status_regra is None:
+            log.warning("Item com status desconhecido ignorado: %r", it)
+            continue
+        providencia = _PROVIDENCIA_MAP.get(it.get("providencia"), Providencia.CORRIGIR)
+        todos.append(ResultadoItem(
+            documento=it.get("documento", ""),
+            item=it.get("item", ""),
+            status=status_regra,
+            descricao=it.get("descricao", ""),
+            providencia=providencia,
+            via_ia=True,
+        ))
+
+    inconformidades = [r for r in todos if r.status == StatusRegra.INCONFORME]
+    pendencias = [r for r in todos if r.status == StatusRegra.PENDENCIA]
+    conformes = [r for r in todos if r.status == StatusRegra.CONFORME]
+
+    docs_com_problema = {r.documento for r in inconformidades + pendencias}
+    documentos_conformes = sorted({r.documento for r in conformes} - docs_com_problema)
+
+    problematicos = inconformidades + pendencias
+    if any(r.providencia == Providencia.SGA for r in problematicos):
+        encaminhamento = Encaminhamento.SGA
+    elif any(r.providencia == Providencia.CORRIGIR for r in problematicos):
+        encaminhamento = Encaminhamento.UNIDADE_DEMANDANTE
+    elif inconformidades:
+        encaminhamento = Encaminhamento.UNIDADE_DEMANDANTE
+    else:
+        encaminhamento = Encaminhamento.PROSSEGUIR
+
+    relatorio = RelatorioSaneamento(
+        processo=processo_sei,
+        tipo=bruto.get("tipo_processo") or "DL não eletrônica",
+        resumo=ResumoContagens(
+            inconformidades=len(inconformidades),
+            pendencias=len(pendencias),
+            conformes=len(conformes),
+        ),
+        inconformidades=inconformidades,
+        pendencias=pendencias,
+        documentos_conformes=documentos_conformes,
+        encaminhamento=encaminhamento,
+        observacoes=bruto.get("observacoes"),
+    )
+
+    return RespostaProcessamento(
+        processo_sei=processo_sei,
+        relatorio=relatorio,
+        documentos_identificados=bruto.get("documentos_identificados", []),
+        paginas_processadas=bruto.get("paginas_processadas", 0),
+        ocr_utilizado=bool(bruto.get("ocr_utilizado", False)),
+    )
 
 
 @router.post(
@@ -92,7 +171,7 @@ async def sanear_processo(
 
     try:
         resultado = await _enviar_para_power_automate(pdf_bytes, file.filename, processo_sei, unidade_demandante)
-        return RespostaProcessamento.model_validate(resultado)
+        return _montar_resposta(resultado, processo_sei)
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except httpx.HTTPError as exc:
@@ -174,7 +253,7 @@ async def sanear_processo_stream(
                 else:
                     resultado_dict = chunk
 
-            resposta = RespostaProcessamento.model_validate(resultado_dict)
+            resposta = _montar_resposta(resultado_dict, processo_sei)
             yield _sse("resultado", resposta.model_dump(mode="json"))
             log.info("Resultado enviado via SSE")
 
