@@ -7,6 +7,7 @@ upload, reenvia o PDF para o fluxo e devolve a resposta dele ao cliente.
 
 from __future__ import annotations
 import asyncio
+import base64
 import json
 import logging
 import httpx
@@ -75,15 +76,23 @@ async def _enviar_para_power_automate(
     processo_sei: str,
     unidade_demandante: str,
 ) -> dict:
-    """Envia o PDF ao fluxo do Power Automate e retorna o JSON de análise (ver Prompt, Seção 9)."""
+    """Envia o PDF ao fluxo do Power Automate e retorna o JSON de análise (ver Prompt, Seção 9).
+
+    O gatilho do fluxo ("Quando uma solicitação HTTP é recebida") espera um corpo JSON
+    com o PDF em base64 — não multipart/form-data.
+    """
     if not settings.power_automate_processo_url:
         raise RuntimeError("Fluxo de processamento (Power Automate) não configurado.")
 
-    files = {"file": (filename, pdf_bytes, "application/pdf")}
-    data = {"processo_sei": processo_sei, "unidade_demandante": unidade_demandante}
+    payload = {
+        "file_content_base64": base64.b64encode(pdf_bytes).decode("ascii"),
+        "file_name": filename,
+        "processo_sei": processo_sei,
+        "unidade_demandante": unidade_demandante,
+    }
 
     async with httpx.AsyncClient(timeout=300.0) as client:
-        resp = await client.post(settings.power_automate_processo_url, files=files, data=data)
+        resp = await client.post(settings.power_automate_processo_url, json=payload)
     resp.raise_for_status()
     return resp.json()
 
