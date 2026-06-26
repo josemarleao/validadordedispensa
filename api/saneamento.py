@@ -94,7 +94,25 @@ async def _enviar_para_power_automate(
     async with httpx.AsyncClient(timeout=300.0) as client:
         resp = await client.post(settings.power_automate_processo_url, json=payload)
     resp.raise_for_status()
-    return resp.json()
+    return _extrair_json_resposta(resp.text)
+
+
+def _extrair_json_resposta(texto: str) -> dict:
+    """Extrai o objeto JSON da resposta da IA, tolerando cercas de bloco de código ou texto residual."""
+    texto = texto.strip()
+    if "```" in texto:
+        for parte in texto.split("```"):
+            parte = parte.strip()
+            if parte.startswith("json"):
+                parte = parte[4:].strip()
+            if parte.startswith("{"):
+                texto = parte
+                break
+    inicio = texto.find("{")
+    fim = texto.rfind("}") + 1
+    if inicio >= 0 and fim > inicio:
+        texto = texto[inicio:fim]
+    return json.loads(texto)
 
 
 def _montar_resposta(bruto: dict, processo_sei: str) -> RespostaProcessamento:
